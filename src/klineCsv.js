@@ -1,10 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { calculateBarType, calculateEMA } = require('./klineIndicators');
+const { calculateBarType, calculateCandleDirection, calculateEMA } = require('./klineIndicators');
 
 // Add new derived series here when you want more indicators in all CSV outputs.
 const DEFAULT_KLINE_DERIVATIONS = Object.freeze({
   barType: (periods) => calculateBarType(periods, 'max', 'min'),
+  candleDirection: (periods) => calculateCandleDirection(periods, 'open', 'close'),
   ema20: (periods) => calculateEMA(periods, 20, 'close'),
 });
 
@@ -17,6 +18,7 @@ const DEFAULT_KLINE_COLUMNS = Object.freeze([
   { header: 'low', value: (period) => period.min },
   { header: 'close', value: (period) => period.close },
   { header: 'volume', value: (period) => period.volume },
+  { header: 'candle_direction', value: (period, context) => context.derivations.candleDirection.get(period.time) ?? '' },
   { header: 'ema20', value: (period, context) => context.derivations.ema20.get(period.time) ?? '' },
   { header: 'bar_type', value: (period, context) => context.derivations.barType.get(period.time) ?? '' },
 ]);

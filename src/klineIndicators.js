@@ -14,7 +14,7 @@ function sortPeriods(periods, order = 'asc') {
   return normalized;
 }
 
-/**计算EMA */
+// Calculate EMA from a selected price source.
 function calculateEMA(periods, length = 20, sourceKey = 'close') {
   if (!Number.isInteger(length) || length <= 0) {
     throw new Error(`EMA length must be a positive integer: ${length}`);
@@ -59,7 +59,33 @@ function calculateEMA(periods, length = 20, sourceKey = 'close') {
   return values;
 }
 
-/**判断K线类型 */
+// Classify the candle by comparing close vs open.
+function calculateCandleDirection(periods, openKey = 'open', closeKey = 'close') {
+  const sortedPeriods = sortPeriods(periods, 'asc');
+  const values = new Map();
+
+  sortedPeriods.forEach((period) => {
+    const open = Number(period[openKey]);
+    const close = Number(period[closeKey]);
+
+    if (!Number.isFinite(open) || !Number.isFinite(close)) {
+      values.set(period.time, null);
+      return;
+    }
+
+    if (close > open) {
+      values.set(period.time, '🟢');
+    } else if (close < open) {
+      values.set(period.time, '🔴');
+    } else {
+      values.set(period.time, '🟰');
+    }
+  });
+
+  return values;
+}
+
+// Classify the bar structure relative to the previous bar.
 function calculateBarType(periods, highKey = 'max', lowKey = 'min') {
   const sortedPeriods = sortPeriods(periods, 'asc');
   const values = new Map();
@@ -109,5 +135,6 @@ function calculateBarType(periods, highKey = 'max', lowKey = 'min') {
 
 module.exports = {
   calculateBarType,
+  calculateCandleDirection,
   calculateEMA,
 };
