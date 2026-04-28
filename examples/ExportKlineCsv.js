@@ -146,11 +146,25 @@ async function runExport(options, server, proxy) {
     const chart = new client.Session.Chart();
     const expectedCount = Math.abs(options.range);
 
-    let exported = false;
+    let finishing = false;
+    let finished = false;
     let cleanedUp = false;
+    let settled = false;
     let settleTimer = null;
     let connected = false;
     let symbolLoaded = false;
+
+    const resolveOnce = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
 
     const cleanup = async () => {
       if (cleanedUp) return;
@@ -161,19 +175,20 @@ async function runExport(options, server, proxy) {
     };
 
     const fail = async (message) => {
+      if (finished || settled) return;
       clearTimeout(timeout);
       try {
         await cleanup();
       } finally {
-        reject(new Error(message));
+        rejectOnce(new Error(message));
       }
     };
 
     const finish = async () => {
-      if (exported) return;
+      if (finishing || finished || settled) return;
       if (!chart.periods.length) return;
 
-      exported = true;
+      finishing = true;
       clearTimeout(timeout);
 
       const outputPath = buildHistoricalOutputPath(options);
@@ -189,8 +204,15 @@ async function runExport(options, server, proxy) {
       console.log(`[${server}] Preview:`);
       console.log(previewCsv(csv, 6));
 
-      await cleanup();
-      resolve({ server, outputPath, periods: periods.length });
+      finished = true;
+
+      try {
+        await cleanup();
+      } catch (err) {
+        console.warn(`[${server}] Cleanup warning: ${err.message}`);
+      }
+
+      resolveOnce({ server, outputPath, periods: periods.length });
     };
 
     const timeout = setTimeout(() => {
@@ -208,17 +230,19 @@ async function runExport(options, server, proxy) {
     });
 
     client.onDisconnected(() => {
-      if (!exported && !cleanedUp) {
+      if (!finished && !cleanedUp) {
         fail(`[${server}] WebSocket disconnected before data arrived`);
       }
     });
 
     client.onError((...err) => {
+      if (finished || cleanedUp) return;
       const details = err.filter(Boolean).join(' ') || 'unknown client error';
       fail(`[${server}] ${details}`);
     });
 
     chart.onError((...err) => {
+      if (finished || cleanedUp) return;
       const details = err.filter(Boolean).join(' ') || 'unknown chart error';
       fail(`[${server}] Chart error: ${details}`);
     });
@@ -229,7 +253,7 @@ async function runExport(options, server, proxy) {
     });
 
     chart.onUpdate(() => {
-      if (!chart.periods.length || exported) return;
+      if (!chart.periods.length || finishing || finished || settled) return;
 
       clearTimeout(settleTimer);
       settleTimer = setTimeout(() => {
