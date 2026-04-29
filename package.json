@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest",
     "example": "node --env-file=.env",
-    "example:dev": "nodemon --env-file=.env"
+    "example:dev": "nodemon --env-file=.env",
+    "panel:kline": "node examples/KlineWebPanel.js"
   },
   "repository": {
     "type": "git",

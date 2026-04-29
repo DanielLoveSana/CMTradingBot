@@ -1,0 +1,80 @@
+import * as path from 'path';
+import { describe, expect, it } from 'vitest';
+
+const {
+  buildProxyCandidates,
+  normalizeHistoricalOptions,
+  normalizeRealtimeOptions,
+  parseToTimestamp,
+  serializePeriod,
+} = require('../src/klineService');
+
+describe('klineService', () => {
+  it('parses ISO timestamps for historical exports', () => {
+    expect(parseToTimestamp('2026-04-27T00:00:00Z')).toBe(1777248000);
+  });
+
+  it('normalizes historical options and resolves relative output directories', () => {
+    const options = normalizeHistoricalOptions({
+      symbol: 'Apple',
+      timeframe: 15,
+      range: '200',
+      to: '2026-04-27T00:00:00Z',
+      outputDir: 'data/custom-klines',
+      timeoutMs: '45000',
+    });
+
+    expect(options).toMatchObject({
+      symbol: 'Apple',
+      timeframe: '15',
+      range: 200,
+      to: 1777248000,
+      timeoutMs: 45000,
+      outputDir: path.resolve(process.cwd(), 'data/custom-klines'),
+    });
+  });
+
+  it('builds automatic proxy candidates and disables proxy when requested', () => {
+    expect(buildProxyCandidates({
+      proxy: '127.0.0.1:10808',
+      proxyProtocol: 'auto',
+    })).toEqual([
+      'socks5://127.0.0.1:10808',
+      'http://127.0.0.1:10808',
+    ]);
+
+    expect(buildProxyCandidates({
+      proxy: '127.0.0.1:10808',
+      proxyProtocol: 'none',
+    })).toEqual([null]);
+  });
+
+  it('normalizes realtime options and serializes candles for the panel', () => {
+    const options = normalizeRealtimeOptions({
+      range: '500',
+      connectTimeoutMs: '15000',
+      exitAfterMs: '0',
+    });
+
+    expect(options.range).toBe(500);
+    expect(options.connectTimeoutMs).toBe(15000);
+    expect(options.exitAfterMs).toBe(0);
+
+    expect(serializePeriod({
+      time: 1777248000,
+      open: 1,
+      max: 2,
+      min: 0.5,
+      close: 1.5,
+      volume: 123.45,
+    })).toEqual({
+      time: 1777248000,
+      datetimeUtc: '2026-04-27 00:00:00 UTC',
+      open: 1,
+      high: 2,
+      low: 0.5,
+      close: 1.5,
+      volume: 123.45,
+    });
+  });
+});

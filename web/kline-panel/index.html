@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradingView K-Line Control Room</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="backdrop"></div>
+  <header class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Local TradingView Operations</p>
+      <h1 id="panel-title">K-Line Control Room</h1>
+      <p class="hero-text">
+        Launch historical CSV exports and realtime K-line listeners without touching the CLI.
+      </p>
+    </div>
+    <div class="hero-status">
+      <div class="status-block">
+        <span class="status-label">Panel</span>
+        <strong id="panel-url">Starting...</strong>
+      </div>
+      <div class="status-block">
+        <span class="status-label">Event Stream</span>
+        <strong id="stream-status" class="status-chip is-pending">Connecting</strong>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card metrics-card">
+      <div class="card-head">
+        <h2>Live Snapshot</h2>
+        <p>Current panel activity at a glance.</p>
+      </div>
+      <div class="metrics-grid">
+        <article class="metric">
+          <span class="metric-label">Running Listeners</span>
+          <strong id="metric-running">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Stopped / Idle</span>
+          <strong id="metric-stopped">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Errors</span>
+          <strong id="metric-errors">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Last Export</span>
+          <strong id="metric-export">None</strong>
+        </article>
+      </div>
+    </section>
+
+    <section class="card form-card">
+      <div class="card-head">
+        <h2>Historical Export</h2>
+        <p>Fetch a candle range and write it to CSV.</p>
+      </div>
+      <form id="historical-form" class="control-form">
+        <div class="form-grid">
+          <label>
+            <span>Symbol</span>
+            <input name="symbol" placeholder="BINANCE:BTCUSDT" required>
+          </label>
+          <label>
+            <span>Timeframe</span>
+            <input name="timeframe" placeholder="15" required>
+          </label>
+          <label>
+            <span>Range</span>
+            <input name="range" type="number" required>
+          </label>
+          <label>
+            <span>To Timestamp / ISO</span>
+            <input name="to" placeholder="2026-04-27T00:00:00Z">
+          </label>
+          <label>
+            <span>Search Type</span>
+            <select name="searchType"></select>
+          </label>
+          <label>
+            <span>Server</span>
+            <select name="server"></select>
+          </label>
+          <label>
+            <span>Proxy</span>
+            <input name="proxy" placeholder="127.0.0.1:10808">
+          </label>
+          <label>
+            <span>Proxy Protocol</span>
+            <select name="proxyProtocol"></select>
+          </label>
+          <label class="span-2">
+            <span>Output Directory</span>
+            <input name="outputDir" placeholder="data/klines">
+          </label>
+          <label>
+            <span>Timeout (ms)</span>
+            <input name="timeoutMs" type="number" required>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="historical-submit">Export CSV</button>
+          <button type="button" id="historical-reset" class="ghost">Reset</button>
+        </div>
+      </form>
+
+      <div class="result-panel">
+        <div class="result-head">
+          <h3>Last Export Result</h3>
+          <p id="export-summary">No export yet.</p>
+        </div>
+        <pre id="export-preview" class="preview-box">Preview will appear here.</pre>
+      </div>
+    </section>
+
+    <section class="card form-card">
+      <div class="card-head">
+        <h2>Realtime Listener</h2>
+        <p>Start a persistent listener and keep the latest snapshot synced to CSV.</p>
+      </div>
+      <form id="realtime-form" class="control-form">
+        <div class="form-grid">
+          <label>
+            <span>Symbol</span>
+            <input name="symbol" placeholder="BINANCE:BTCUSDT" required>
+          </label>
+          <label>
+            <span>Timeframe</span>
+            <input name="timeframe" placeholder="15" required>
+          </label>
+          <label>
+            <span>Initial Range</span>
+            <input name="range" type="number" required>
+          </label>
+          <label>
+            <span>Search Type</span>
+            <select name="searchType"></select>
+          </label>
+          <label>
+            <span>Server</span>
+            <select name="server"></select>
+          </label>
+          <label>
+            <span>Proxy</span>
+            <input name="proxy" placeholder="127.0.0.1:10808">
+          </label>
+          <label>
+            <span>Proxy Protocol</span>
+            <select name="proxyProtocol"></select>
+          </label>
+          <label class="span-2">
+            <span>Output Directory</span>
+            <input name="outputDir" placeholder="data/realtime">
+          </label>
+          <label>
+            <span>Connect Timeout (ms)</span>
+            <input name="connectTimeoutMs" type="number" required>
+          </label>
+          <label>
+            <span>Auto Stop After (ms)</span>
+            <input name="exitAfterMs" type="number" min="0">
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="realtime-submit">Start Listener</button>
+          <button type="button" id="realtime-reset" class="ghost">Reset</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card listeners-card">
+      <div class="card-head">
+        <h2>Listener Fleet</h2>
+        <p>Track every listener started from this panel and stop active ones on demand.</p>
+      </div>
+      <div id="listener-list" class="listener-list">
+        <div class="empty-state">No listeners have been started yet.</div>
+      </div>
+    </section>
+
+    <section class="card console-card">
+      <div class="card-head">
+        <h2>Event Console</h2>
+        <p>Streaming export and listener logs from the local panel.</p>
+      </div>
+      <div id="log-stream" class="log-stream"></div>
+    </section>
+  </main>
+
+  <template id="listener-template">
+    <article class="listener-card">
+      <div class="listener-head">
+        <div>
+          <p class="listener-symbol"></p>
+          <p class="listener-meta"></p>
+        </div>
+        <div class="listener-actions">
+          <span class="status-chip"></span>
+          <button type="button" class="listener-stop ghost">Stop</button>
+        </div>
+      </div>
+      <dl class="listener-data">
+        <div>
+          <dt>Output</dt>
+          <dd class="listener-output"></dd>
+        </div>
+        <div>
+          <dt>Server</dt>
+          <dd class="listener-server"></dd>
+        </div>
+        <div>
+          <dt>Periods</dt>
+          <dd class="listener-periods"></dd>
+        </div>
+        <div>
+          <dt>Last Event</dt>
+          <dd class="listener-updated"></dd>
+        </div>
+      </dl>
+      <div class="listener-candle">
+        <p class="listener-candle-title">Latest Candle</p>
+        <pre class="listener-candle-body">Waiting for data...</pre>
+      </div>
+      <p class="listener-error"></p>
+    </article>
+  </template>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

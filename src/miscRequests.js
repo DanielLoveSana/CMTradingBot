@@ -2,7 +2,20 @@ const os = require('os');
 const axios = require('axios');
 
 const PineIndicator = require('./classes/PineIndicator');
-const { genAuthCookies } = require('./utils');
+const { getAxiosProxyConfig } = require('./proxy');
+const {
+  DEFAULT_CONFIG_PATH,
+  extractMarketSymbolId,
+  getSymbolAliasRecord,
+  loadSymbolConfig,
+  normalizeAliasKey,
+  setSymbolAliasRecord,
+} = require('./marketSymbolCache');
+const {
+  resolveMarketSymbol: resolveStoredMarketSymbol,
+  toAliasRecord,
+} = require('./marketSymbolResolver');
+const { formatErrorMessage, genAuthCookies } = require('./utils');
 
 const validateStatus = (status) => status < 500;
 
@@ -94,35 +107,45 @@ module.exports = {
    * @returns {Promise<SearchMarketResult[]>} Search results
    * @deprecated Use searchMarketV3 instead
    */
-  async searchMarket(search, filter = '') {
-    const { data } = await axios.get(
-      'https://symbol-search.tradingview.com/symbol_search',
-      {
-        params: {
-          text: search.replace(/ /g, '%20'),
-          type: filter,
+  async searchMarket(search, filter = '', requestOptions = {}) {
+    try {
+      const { data } = await axios.get(
+        'https://symbol-search.tradingview.com/symbol_search',
+        {
+          params: {
+            text: search.replace(/ /g, '%20'),
+            type: filter,
+          },
+          headers: {
+            origin: 'https://www.tradingview.com',
+          },
+          timeout: requestOptions.timeoutMs || 15000,
+          validateStatus,
+          ...getAxiosProxyConfig(requestOptions.proxy),
         },
-        headers: {
-          origin: 'https://www.tradingview.com',
-        },
-        validateStatus,
-      },
-    );
+      );
 
-    return data.map((s) => {
-      const exchange = s.exchange.split(' ')[0];
-      const id = `${exchange}:${s.symbol}`;
+      if (!Array.isArray(data)) {
+        throw new Error(`Unexpected TradingView response while searching "${search}"`);
+      }
 
-      return {
-        id,
-        exchange,
-        fullExchange: s.exchange,
-        symbol: s.symbol,
-        description: s.description,
-        type: s.type,
-        getTA: () => this.getTA(id),
-      };
-    });
+      return data.map((s) => {
+        const exchange = s.exchange.split(' ')[0];
+        const id = `${exchange}:${s.symbol}`;
+
+        return {
+          id,
+          exchange,
+          fullExchange: s.exchange,
+          symbol: s.symbol,
+          description: s.description,
+          type: s.type,
+          getTA: () => this.getTA(id),
+        };
+      });
+    } catch (error) {
+      throw new Error(`TradingView symbol search failed for "${search}": ${formatErrorMessage(error)}`);
+    }
   },
 
   /**
@@ -136,43 +159,159 @@ module.exports = {
    * @param {number} offset Pagination offset
    * @returns {Promise<SearchMarketResult[]>} Search results
    */
-  async searchMarketV3(search, filter = '', offset = 0) {
+  async searchMarketV3(search, filter = '', offset = 0, requestOptions = {}) {
     const splittedSearch = search.toUpperCase().replace(/ /g, '+').split(':');
 
-    const request = await axios.get(
-      'https://symbol-search.tradingview.com/symbol_search/v3',
-      {
-        params: {
-          exchange: (splittedSearch.length === 2
-            ? splittedSearch[0]
-            : undefined
-          ),
-          text: splittedSearch.pop(),
-          search_type: filter,
-          start: offset,
+    try {
+      const request = await axios.get(
+        'https://symbol-search.tradingview.com/symbol_search/v3',
+        {
+          params: {
+            exchange: (splittedSearch.length === 2
+              ? splittedSearch[0]
+              : undefined
+            ),
+            text: splittedSearch.pop(),
+            search_type: filter,
+            start: offset,
+          },
+          headers: {
+            origin: 'https://www.tradingview.com',
+          },
+          timeout: requestOptions.timeoutMs || 15000,
+          validateStatus,
+          ...getAxiosProxyConfig(requestOptions.proxy),
         },
-        headers: {
-          origin: 'https://www.tradingview.com',
-        },
-        validateStatus,
-      },
-    );
+      );
 
-    const { data } = request;
+      const { data } = request;
 
-    return data.symbols.map((s) => {
-      const exchange = s.exchange.split(' ')[0];
-      const id = s.prefix ? `${s.prefix}:${s.symbol}` : `${exchange.toUpperCase()}:${s.symbol}`;
+      if (!data || !Array.isArray(data.symbols)) {
+        throw new Error(`Unexpected TradingView response while searching "${search}"`);
+      }
 
-      return {
-        id,
-        exchange,
-        fullExchange: s.exchange,
-        symbol: s.symbol,
-        description: s.description,
-        type: s.type,
-        getTA: () => this.getTA(id),
-      };
+      return data.symbols.map((s) => {
+        const exchange = s.exchange.split(' ')[0];
+        const id = s.prefix ? `${s.prefix}:${s.symbol}` : `${exchange.toUpperCase()}:${s.symbol}`;
+
+        return {
+          id,
+          exchange,
+          fullExchange: s.exchange,
+          symbol: s.symbol,
+          description: s.description,
+          type: s.type,
+          getTA: () => this.getTA(id),
+        };
+      });
+    } catch (error) {
+      throw new Error(`TradingView symbol search failed for "${search}": ${formatErrorMessage(error)}`);
+    }
+  },
+
+  /**
+   * Return the config script path used to persist resolved market symbols.
+   * @function getMarketSymbolConfigPath
+   * @returns {string} Config path
+   */
+  getMarketSymbolConfigPath() {
+    return DEFAULT_CONFIG_PATH;
+  },
+
+  /**
+   * Read the persisted market symbol config.
+   * @function getMarketSymbolConfig
+   * @param {string} [configPath] Alternate config path
+   * @returns {{ aliases: Object<string, string | {
+   *   id: string,
+   *   exchange?: string,
+   *   fullExchange?: string,
+   *   symbol?: string,
+   *   description?: string,
+   *   type?: string,
+   *   alias?: string,
+   *   updatedAt?: string
+   * }>}} Config object
+   */
+  getMarketSymbolConfig(configPath = DEFAULT_CONFIG_PATH) {
+    return loadSymbolConfig(configPath);
+  },
+
+  /**
+   * Return a persisted market symbol alias record.
+   * @function getMarketSymbolAlias
+   * @param {string} alias Alias, keyword or short symbol
+   * @param {string} [configPath] Alternate config path
+   * @returns {null | string | {
+   *   id: string,
+   *   exchange?: string,
+   *   fullExchange?: string,
+   *   symbol?: string,
+   *   description?: string,
+   *   type?: string,
+   *   alias?: string,
+   *   updatedAt?: string
+   * }} Alias record
+   */
+  getMarketSymbolAlias(alias, configPath = DEFAULT_CONFIG_PATH) {
+    return getSymbolAliasRecord(alias, configPath);
+  },
+
+  /**
+   * Persist a market symbol alias manually.
+   * @function setMarketSymbolAlias
+   * @param {string} alias Alias, keyword or short symbol
+   * @param {string | SearchMarketResult} market Full symbol or search result
+   * @param {string} [configPath] Alternate config path
+   * @returns {string} Stored full symbol
+   */
+  setMarketSymbolAlias(alias, market, configPath = DEFAULT_CONFIG_PATH) {
+    const record = typeof market === 'string'
+      ? {
+        id: market,
+        alias: normalizeAliasKey(alias),
+        updatedAt: new Date().toISOString(),
+      }
+      : toAliasRecord(market, alias);
+
+    setSymbolAliasRecord(alias, record, configPath);
+    return extractMarketSymbolId(record);
+  },
+
+  /**
+   * Resolve a keyword, short symbol or full symbol into a complete TradingView symbol.
+   * The resolver first checks the local config script, then falls back to searchMarketV3.
+   * Search hits are written back to the config for later reuse.
+   * @function resolveMarketSymbol
+   * @param {string} input Keyword, short symbol or full symbol
+   * @param {{
+   *   filter?: 'stock' | 'futures' | 'forex' | 'cfd' | 'crypto' | 'index' | 'economic',
+   *   configPath?: string,
+   *   persist?: boolean,
+   *   proxy?: string,
+   *   timeoutMs?: number
+   * }} [options] Resolve options
+   * @returns {Promise<{
+   *   input: string,
+   *   id: string,
+   *   exchange?: string,
+   *   fullExchange?: string,
+   *   symbol?: string,
+   *   description?: string,
+   *   type?: string,
+   *   source: 'cache' | 'search' | 'direct',
+   *   cached: boolean
+   * }>} Resolution result
+   */
+  async resolveMarketSymbol(input, options = {}) {
+    const { proxy, timeoutMs, ...resolverOptions } = options;
+
+    return resolveStoredMarketSymbol(input, {
+      ...resolverOptions,
+      searchMarket: (search, filter) => module.exports.searchMarketV3(search, filter, 0, {
+        proxy,
+        timeoutMs,
+      }),
     });
   },
 
