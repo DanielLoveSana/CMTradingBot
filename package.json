@@ -7,7 +7,9 @@
     "test": "vitest",
     "example": "node --env-file=.env",
     "example:dev": "nodemon --env-file=.env",
-    "panel:kline": "node examples/KlineWebPanel.js"
+    "panel:kline": "node examples/KlineWebPanel.js",
+    "notify:telegram": "node --env-file=.env examples/TelegramNotify.js",
+    "notify:feishu": "node --env-file=.env examples/FeishuNotify.js"
   },
   "repository": {
     "type": "git",
