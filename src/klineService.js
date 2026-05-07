@@ -374,7 +374,7 @@ async function resolveInputSymbol(options, hooks = {}) {
   throw new Error(`Unable to resolve symbol "${originalInput}"`);
 }
 
-async function runHistoricalExportOnce(options, server, proxy, hooks = {}) {
+async function runHistoricalExportOnce(options, server, proxy, hooks = {}, exportOptions = {}) {
   return new Promise((resolve, reject) => {
     const client = new Client({ server, proxy });
     const chart = new client.Session.Chart();
@@ -425,11 +425,19 @@ async function runHistoricalExportOnce(options, server, proxy, hooks = {}) {
       finishing = true;
       clearTimeout(timeout);
 
-      const outputPath = buildHistoricalOutputPath(options);
+      const outputPathBuilder = typeof exportOptions.outputPathBuilder === 'function'
+        ? exportOptions.outputPathBuilder
+        : buildHistoricalOutputPath;
+      const outputPath = outputPathBuilder(options);
+      const csvContext = typeof exportOptions.buildContext === 'function'
+        ? exportOptions.buildContext(chart.periods, options)
+        : undefined;
       const { csv, periods } = writePeriodsCsv({
         periods: chart.periods,
         outputPath,
-        order: 'asc',
+        order: exportOptions.order || 'asc',
+        columns: exportOptions.columns,
+        context: csvContext,
       });
 
       emitLog(hooks, 'info', `[${server}] Loaded ${periods.length} candles for ${options.symbol}`);
@@ -539,7 +547,7 @@ async function runHistoricalExportOnce(options, server, proxy, hooks = {}) {
   });
 }
 
-async function exportHistoricalKlines(rawOptions, hooks = {}) {
+async function exportHistoricalKlines(rawOptions, hooks = {}, exportOptions = {}) {
   const normalized = normalizeHistoricalOptions(rawOptions);
   const options = await resolveInputSymbol(normalized, hooks);
   const servers = options.server === 'auto'
@@ -557,7 +565,7 @@ async function exportHistoricalKlines(rawOptions, hooks = {}) {
     // eslint-disable-next-line no-restricted-syntax
     for (const server of servers) {
       try {
-        const result = await runHistoricalExportOnce(options, server, proxy, hooks);
+        const result = await runHistoricalExportOnce(options, server, proxy, hooks, exportOptions);
         emitEvent(hooks, 'export-completed', result);
         return result;
       } catch (error) {
