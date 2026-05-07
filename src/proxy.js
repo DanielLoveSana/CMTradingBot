@@ -55,26 +55,33 @@ function isSecureEndpoint(options = {}) {
   return options.protocol !== 'http:';
 }
 
+function assignIfDefined(target, key, value) {
+  if (value !== undefined) {
+    target[key] = value;
+  }
+}
+
 function pickTlsOptions(options = {}, targetHost, targetPort, socket) {
   const tlsOptions = {
     socket,
     host: targetHost,
     port: targetPort,
-    servername: options.servername,
-    rejectUnauthorized: options.rejectUnauthorized,
-    ALPNProtocols: options.ALPNProtocols,
-    ca: options.ca,
-    cert: options.cert,
-    ciphers: options.ciphers,
-    checkServerIdentity: options.checkServerIdentity,
-    key: options.key,
-    maxVersion: options.maxVersion,
-    minVersion: options.minVersion,
-    passphrase: options.passphrase,
-    pfx: options.pfx,
-    secureContext: options.secureContext,
-    secureProtocol: options.secureProtocol,
   };
+
+  assignIfDefined(tlsOptions, 'servername', options.servername);
+  assignIfDefined(tlsOptions, 'rejectUnauthorized', options.rejectUnauthorized);
+  assignIfDefined(tlsOptions, 'ALPNProtocols', options.ALPNProtocols);
+  assignIfDefined(tlsOptions, 'ca', options.ca);
+  assignIfDefined(tlsOptions, 'cert', options.cert);
+  assignIfDefined(tlsOptions, 'ciphers', options.ciphers);
+  assignIfDefined(tlsOptions, 'checkServerIdentity', options.checkServerIdentity);
+  assignIfDefined(tlsOptions, 'key', options.key);
+  assignIfDefined(tlsOptions, 'maxVersion', options.maxVersion);
+  assignIfDefined(tlsOptions, 'minVersion', options.minVersion);
+  assignIfDefined(tlsOptions, 'passphrase', options.passphrase);
+  assignIfDefined(tlsOptions, 'pfx', options.pfx);
+  assignIfDefined(tlsOptions, 'secureContext', options.secureContext);
+  assignIfDefined(tlsOptions, 'secureProtocol', options.secureProtocol);
 
   if (tlsOptions.servername === undefined && targetHost && !net.isIP(targetHost)) {
     tlsOptions.servername = targetHost;
@@ -91,7 +98,9 @@ function createTargetSocket(socket, options, targetHost, targetPort) {
 function connectSocket(options, secure = false) {
   return new Promise((resolve, reject) => {
     const socket = secure
-      ? tls.connect(options)
+      ? tls.connect(Object.fromEntries(
+        Object.entries(options).filter(([, value]) => value !== undefined),
+      ))
       : net.connect(options);
 
     const onError = (error) => {
@@ -322,4 +331,7 @@ module.exports = {
   getProxyProtocol,
   createProxyAgent,
   getAxiosProxyConfig,
+  __private: {
+    pickTlsOptions,
+  },
 };

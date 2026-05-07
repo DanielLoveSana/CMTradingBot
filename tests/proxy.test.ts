@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 const https = require('https');
 const {
+  __private,
   createProxyAgent,
   getAxiosProxyConfig,
   getProxyProtocol,
@@ -28,5 +29,21 @@ describe('proxy helpers', () => {
     expect(config.proxy).toBe(false);
     expect(config.httpAgent).toBe(config.httpsAgent);
     expect(config.httpsAgent).toBeInstanceOf(https.Agent);
+  });
+
+  it('omits undefined TLS callbacks before opening tunneled sockets', () => {
+    const tlsOptions = __private.pickTlsOptions(
+      {
+        checkServerIdentity: undefined,
+        rejectUnauthorized: false,
+      },
+      'example.com',
+      443,
+      { fake: true },
+    );
+
+    expect(Object.prototype.hasOwnProperty.call(tlsOptions, 'checkServerIdentity')).toBe(false);
+    expect(tlsOptions.servername).toBe('example.com');
+    expect(tlsOptions.rejectUnauthorized).toBe(false);
   });
 });
