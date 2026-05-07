@@ -98,6 +98,11 @@ const elements = {
   catalogSummary: document.querySelector('#catalog-summary'),
   tabButtons: [...document.querySelectorAll('[data-tab-trigger]')],
   tabPanels: [...document.querySelectorAll('[data-tab-panel]')],
+  jumpButtons: [...document.querySelectorAll('[data-jump-tab]')],
+  overviewPulse: document.querySelector('#overview-pulse'),
+  realtimeStatusSummary: document.querySelector('#realtime-status-summary'),
+  listenersOverviewText: document.querySelector('#listeners-overview-text'),
+  consoleStatusText: document.querySelector('#console-status-text'),
 };
 
 const symbolPickers = [...document.querySelectorAll('[data-symbol-picker]')].map((root) => ({
@@ -130,6 +135,22 @@ function normalizeText(value) {
 
 function formatCountLabel(count, unit) {
   return `${count} ${unit}`;
+}
+
+function summarizeListenerState() {
+  const listeners = [...appState.listeners.values()];
+  const running = listeners.filter((item) => (
+    item.status === 'running' || item.status === 'starting' || item.status === 'connecting'
+  )).length;
+  const stopped = listeners.filter((item) => item.status === 'stopped').length;
+  const errors = listeners.filter((item) => item.status === 'error').length;
+
+  return {
+    listeners,
+    running,
+    stopped,
+    errors,
+  };
 }
 
 function clampLogLines(max = 300) {
@@ -345,18 +366,81 @@ function buildSymbolCatalogTree(catalog) {
     }));
 }
 
-function setStreamStatus(isLive) {
-  elements.streamStatus.textContent = isLive ? '已连接' : '已断开';
-  elements.streamStatus.className = `status-chip ${isLive ? 'is-live' : 'is-pending'}`;
+function setStreamStatus(mode = 'connecting') {
+  const stateMap = {
+    connecting: {
+      text: '连接中',
+      className: 'status-chip is-pending',
+      consoleText: '事件流连接中，日志会在建立连接后自动刷新。',
+    },
+    live: {
+      text: '已连接',
+      className: 'status-chip is-live',
+      consoleText: '事件流已连接，新的导出和监听日志会实时写入。',
+    },
+    offline: {
+      text: '已断开',
+      className: 'status-chip is-offline',
+      consoleText: '事件流暂时断开，请稍后观察连接恢复情况。',
+    },
+  };
+  const state = stateMap[mode] || stateMap.connecting;
+
+  elements.streamStatus.textContent = state.text;
+  elements.streamStatus.className = state.className;
+
+  if (elements.consoleStatusText) {
+    elements.consoleStatusText.textContent = state.consoleText;
+  }
+}
+
+function renderOperationalNarrative() {
+  const { listeners, running, errors } = summarizeListenerState();
+
+  if (elements.overviewPulse) {
+    if (errors > 0) {
+      elements.overviewPulse.textContent = `当前有 ${errors} 个异常任务，建议优先打开事件控制台查看报错详情。`;
+    } else if (running > 0) {
+      elements.overviewPulse.textContent = `当前有 ${running} 个监听正在运行，可以直接前往监听列表查看最新快照。`;
+    } else if (appState.lastExport) {
+      elements.overviewPulse.textContent = '当前没有活跃监听，最近一次导出结果已保留在结果区，适合继续发起新任务。';
+    } else {
+      elements.overviewPulse.textContent = '当前系统空闲，可以从历史导出、策略信号或实时监听开始。';
+    }
+  }
+
+  if (elements.realtimeStatusSummary) {
+    elements.realtimeStatusSummary.textContent = running > 0
+      ? `当前有 ${running} 个监听正在运行，新任务启动后会自动加入列表。`
+      : '当前没有运行中的监听，适合启动新的实时任务。';
+  }
+
+  if (elements.listenersOverviewText) {
+    elements.listenersOverviewText.textContent = listeners.length
+      ? `共 ${listeners.length} 个监听任务，按最近活动时间倒序展示，便于优先检查最新变化。`
+      : '当前还没有监听任务，启动成功后会自动出现在这里。';
+  }
+}
+
+function setButtonBusy(button, busy, busyLabel) {
+  if (!button) return;
+
+  if (!button.dataset.idleLabel) {
+    button.dataset.idleLabel = button.textContent.trim();
+  }
+
+  button.disabled = busy;
+  button.classList.toggle('is-busy', busy);
+  button.setAttribute('aria-busy', busy ? 'true' : 'false');
+  button.textContent = busy ? busyLabel : button.dataset.idleLabel;
 }
 
 function renderMetrics() {
-  const listeners = [...appState.listeners.values()];
-  const running = listeners.filter((item) => (
-    item.status === 'running' || item.status === 'starting' || item.status === 'connecting'
-  )).length;
-  const stopped = listeners.filter((item) => item.status === 'stopped').length;
-  const errors = listeners.filter((item) => item.status === 'error').length;
+  const {
+    running,
+    stopped,
+    errors,
+  } = summarizeListenerState();
   const lastExportLabel = appState.lastExport
     ? [appState.lastExport.metricLabel || '导出', appState.lastExport.resolvedSymbol]
       .filter(Boolean)
@@ -368,6 +452,7 @@ function renderMetrics() {
   elements.metricErrors.textContent = String(errors);
   elements.metricSymbols.textContent = String(appState.symbolCatalog.length);
   elements.metricExport.textContent = lastExportLabel;
+  renderOperationalNarrative();
 }
 
 function renderExportResult() {
@@ -780,6 +865,8 @@ function renderListeners() {
         `close=${latest.close}`,
         `volume=${latest.volume}`,
       ].join('\n');
+    } else {
+      candle.textContent = '等待数据中...';
     }
 
     const isActive = listener.status === 'running' || listener.status === 'starting'
@@ -858,12 +945,14 @@ function switchTab(tabId) {
     const active = button.dataset.tabTrigger === tabId;
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-selected', active ? 'true' : 'false');
+    button.setAttribute('tabindex', active ? '0' : '-1');
   });
 
   elements.tabPanels.forEach((panel) => {
     const active = panel.dataset.tabPanel === tabId;
     panel.classList.toggle('is-active', active);
     panel.hidden = !active;
+    panel.setAttribute('aria-hidden', active ? 'false' : 'true');
   });
 }
 
@@ -943,7 +1032,7 @@ function handleEvent(event) {
 }
 
 async function submitExportRequest(url, payload, button) {
-  button.disabled = true;
+  setButtonBusy(button, true, '导出中...');
 
   try {
     const result = await postJson(url, payload);
@@ -958,18 +1047,48 @@ async function submitExportRequest(url, payload, button) {
       message: error.message,
     });
   } finally {
-    button.disabled = false;
+    setButtonBusy(button, false, '导出中...');
   }
 }
 
 function initializeTabs() {
-  elements.tabButtons.forEach((button) => {
+  elements.tabButtons.forEach((button, index) => {
     button.addEventListener('click', () => {
       switchTab(button.dataset.tabTrigger);
+    });
+
+    button.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        return;
+      }
+
+      event.preventDefault();
+      const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+      const nextIndex = (index + direction + elements.tabButtons.length)
+        % elements.tabButtons.length;
+      const nextButton = elements.tabButtons[nextIndex];
+
+      nextButton.focus();
+      switchTab(nextButton.dataset.tabTrigger);
     });
   });
 
   switchTab(appState.activeTab);
+}
+
+function initializeJumpButtons() {
+  elements.jumpButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const tabId = button.dataset.jumpTab;
+      if (!tabId) return;
+
+      switchTab(tabId);
+      const targetPanel = elements.tabPanels.find((panel) => panel.dataset.tabPanel === tabId);
+      if (targetPanel) {
+        targetPanel.scrollIntoView({ block: 'start' });
+      }
+    });
+  });
 }
 
 function initializeSymbolPickers() {
@@ -1010,19 +1129,20 @@ function initializeSymbolPickers() {
 
 async function initialize() {
   initializeTabs();
+  initializeJumpButtons();
   initializeSymbolPickers();
+  setStreamStatus('connecting');
 
   const response = await fetch('/api/state');
   const payload = await response.json();
   hydrateState(payload);
-  setStreamStatus(false);
 
   const eventSource = new EventSource('/api/events');
   eventSource.addEventListener('open', () => {
-    setStreamStatus(true);
+    setStreamStatus('live');
   });
   eventSource.addEventListener('error', () => {
-    setStreamStatus(false);
+    setStreamStatus('offline');
   });
   eventSource.onmessage = (message) => {
     try {
@@ -1057,12 +1177,13 @@ async function initialize() {
 
   elements.realtimeForm.addEventListener('submit', async (submitEvent) => {
     submitEvent.preventDefault();
-    elements.realtimeSubmit.disabled = true;
+    setButtonBusy(elements.realtimeSubmit, true, '启动中...');
 
     try {
       const result = await postJson('/api/listeners', serializeRealtimeForm());
       appState.listeners.set(result.listener.id, result.listener);
       renderListeners();
+      switchTab('listeners');
     } catch (error) {
       appendLog({
         timestamp: new Date().toISOString(),
@@ -1071,7 +1192,7 @@ async function initialize() {
         message: error.message,
       });
     } finally {
-      elements.realtimeSubmit.disabled = false;
+      setButtonBusy(elements.realtimeSubmit, false, '启动中...');
     }
   });
 
@@ -1101,7 +1222,7 @@ async function initialize() {
     const listenerId = card && card.dataset.listenerId;
     if (!listenerId) return;
 
-    button.disabled = true;
+    setButtonBusy(button, true, '停止中...');
 
     try {
       const result = await postJson(`/api/listeners/${listenerId}/stop`, {});
@@ -1114,6 +1235,7 @@ async function initialize() {
         level: 'error',
         message: error.message,
       });
+      setButtonBusy(button, false, '停止中...');
     }
   });
 }
