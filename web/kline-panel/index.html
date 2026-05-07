@@ -13,7 +13,7 @@
       <p class="eyebrow">Local TradingView Operations</p>
       <h1 id="panel-title">K-Line Control Room</h1>
       <p class="hero-text">
-        Launch historical CSV exports and realtime K-line listeners without touching the CLI.
+        Launch historical CSV exports, strategy signal exports, and realtime K-line listeners without touching the CLI.
       </p>
     </div>
     <div class="hero-status">
@@ -118,6 +118,105 @@
       </div>
     </section>
 
+    <section class="card form-card strategy-card">
+      <div class="card-head">
+        <h2>Strategy Signal Export</h2>
+        <p>Generate signal-only CSV from the demo Bollinger Bands + ADX strategy without placing orders.</p>
+      </div>
+      <form id="strategy-form" class="control-form">
+        <div class="form-grid">
+          <label>
+            <span>Symbol</span>
+            <input name="symbol" placeholder="BINANCE:BTCUSDT" required>
+          </label>
+          <label>
+            <span>Timeframe</span>
+            <input name="timeframe" placeholder="15" required>
+          </label>
+          <label>
+            <span>Range</span>
+            <input name="range" type="number" required>
+          </label>
+          <label>
+            <span>To Timestamp / ISO</span>
+            <input name="to" placeholder="2026-04-27T00:00:00Z">
+          </label>
+          <label>
+            <span>Search Type</span>
+            <select name="searchType"></select>
+          </label>
+          <label>
+            <span>Server</span>
+            <select name="server"></select>
+          </label>
+          <label>
+            <span>Proxy</span>
+            <input name="proxy" placeholder="127.0.0.1:10808">
+          </label>
+          <label>
+            <span>Proxy Protocol</span>
+            <select name="proxyProtocol"></select>
+          </label>
+          <label class="span-2">
+            <span>Output Directory</span>
+            <input name="outputDir" placeholder="data/strategy-signals">
+          </label>
+          <label>
+            <span>Timeout (ms)</span>
+            <input name="timeoutMs" type="number" required>
+          </label>
+          <label>
+            <span>BB Length</span>
+            <input name="length" type="number" required>
+          </label>
+          <label>
+            <span>MA Type</span>
+            <select name="maType">
+              <option value="SMA">SMA</option>
+              <option value="EMA">EMA</option>
+              <option value="RMA">RMA</option>
+              <option value="WMA">WMA</option>
+              <option value="VWMA">VWMA</option>
+              <option value="LLT">LLT</option>
+            </select>
+          </label>
+          <label>
+            <span>BB Multiplier</span>
+            <input name="mult" type="number" step="0.01" required>
+          </label>
+          <label>
+            <span>LLT Alpha</span>
+            <input name="alpha" type="number" step="0.01" required>
+          </label>
+          <label>
+            <span>ADX Threshold</span>
+            <input name="adxThreshold" type="number" step="0.01" required>
+          </label>
+          <label>
+            <span>ADX Length</span>
+            <input name="adxLength" type="number" required>
+          </label>
+          <label>
+            <span>DI Length</span>
+            <input name="diLength" type="number" required>
+          </label>
+          <label>
+            <span>Start Date</span>
+            <input name="startDate" placeholder="2024-11-10T00:00:00Z">
+          </label>
+          <label class="span-2">
+            <span>End Date</span>
+            <input name="endDate" placeholder="2069-12-31T23:59:59Z">
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="strategy-submit">Export Signal CSV</button>
+          <button type="button" id="strategy-reset" class="ghost">Reset</button>
+        </div>
+      </form>
+    </section>
+
     <section class="card form-card">
       <div class="card-head">
         <h2>Realtime Listener</h2>
@@ -187,7 +286,7 @@
     <section class="card console-card">
       <div class="card-head">
         <h2>Event Console</h2>
-        <p>Streaming export and listener logs from the local panel.</p>
+        <p>Streaming historical export, strategy export, and listener logs from the local panel.</p>
       </div>
       <div id="log-stream" class="log-stream"></div>
     </section>

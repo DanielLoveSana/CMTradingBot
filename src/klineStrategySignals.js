@@ -47,6 +47,20 @@ const DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS = Object.freeze({
   endDate: '2069-12-31T23:59:59Z',
 });
 
+const DEFAULT_DEMO_BOLLINGER_ADX_EXPORT_OPTIONS = Object.freeze({
+  symbol: 'BINANCE:BTCUSDT',
+  timeframe: '15',
+  range: 200,
+  to: null,
+  searchType: '',
+  proxy: '127.0.0.1:10808',
+  proxyProtocol: 'auto',
+  server: 'auto',
+  outputDir: path.join(__dirname, '..', 'data', 'strategy-signals'),
+  timeoutMs: 30000,
+  ...DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS,
+});
+
 function parseStrategyTimestamp(value) {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -66,6 +80,69 @@ function parseStrategyTimestamp(value) {
   }
 
   return Math.floor(parsed / 1000);
+}
+
+function normalizeStrategyString(value, fallback = '') {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function parseStrategyInteger(value, name) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid ${name}: ${value}`);
+  }
+
+  return parsed;
+}
+
+function parseStrategyFloat(value, name) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid ${name}: ${value}`);
+  }
+
+  return parsed;
+}
+
+function normalizeDemoBollingerAdxOptions(input = {}) {
+  const raw = { ...DEFAULT_DEMO_BOLLINGER_ADX_EXPORT_OPTIONS, ...input };
+
+  return {
+    length: parseStrategyInteger(raw.length, 'length'),
+    maType: normalizeStrategyString(raw.maType, DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.maType),
+    mult: parseStrategyFloat(raw.mult, 'mult'),
+    alpha: parseStrategyFloat(raw.alpha, 'alpha'),
+    sourceKey: normalizeStrategyString(
+      raw.sourceKey,
+      DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.sourceKey,
+    ),
+    volumeKey: normalizeStrategyString(
+      raw.volumeKey,
+      DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.volumeKey,
+    ),
+    diLength: parseStrategyInteger(raw.diLength, 'di-length'),
+    adxLength: parseStrategyInteger(raw.adxLength, 'adx-length'),
+    highKey: normalizeStrategyString(raw.highKey, DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.highKey),
+    lowKey: normalizeStrategyString(raw.lowKey, DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.lowKey),
+    closeKey: normalizeStrategyString(
+      raw.closeKey,
+      DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.closeKey,
+    ),
+    adxThreshold: parseStrategyFloat(raw.adxThreshold, 'adx-threshold'),
+    startDate: normalizeStrategyString(
+      raw.startDate,
+      DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.startDate,
+    ),
+    endDate: normalizeStrategyString(
+      raw.endDate,
+      DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS.endDate,
+    ),
+  };
 }
 
 function createStrategySignalDefinition(definition) {
@@ -346,6 +423,7 @@ function buildDemoBollingerAdxSignalOutputPath(options) {
 
 module.exports = {
   DEFAULT_DEMO_BOLLINGER_ADX_OPTIONS,
+  DEFAULT_DEMO_BOLLINGER_ADX_EXPORT_OPTIONS,
   DEFAULT_SIGNAL_COLUMNS,
   buildDemoBollingerAdxSignalColumns,
   buildDemoBollingerAdxSignalContext,
@@ -354,5 +432,6 @@ module.exports = {
   buildStrategySignalOutputPath,
   createDemoBollingerAdxStrategy,
   createStrategySignalDefinition,
+  normalizeDemoBollingerAdxOptions,
   writeStrategySignalCsv,
 };

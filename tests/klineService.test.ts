@@ -34,6 +34,23 @@ describe('klineService', () => {
     });
   });
 
+  it('preserves extra export fields for custom CSV builders', () => {
+    const options = normalizeHistoricalOptions({
+      symbol: 'Apple',
+      timeframe: 15,
+      range: '200',
+      outputDir: 'data/custom-klines',
+      timeoutMs: '45000',
+      strategyName: 'demo_bollinger_bands_adx',
+      length: 20,
+      adxThreshold: 25,
+    });
+
+    expect(options.strategyName).toBe('demo_bollinger_bands_adx');
+    expect(options.length).toBe(20);
+    expect(options.adxThreshold).toBe(25);
+  });
+
   it('builds automatic proxy candidates and disables proxy when requested', () => {
     expect(buildProxyCandidates({
       proxy: '127.0.0.1:10808',

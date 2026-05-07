@@ -10,10 +10,13 @@ const elements = {
   panelUrl: document.querySelector('#panel-url'),
   streamStatus: document.querySelector('#stream-status'),
   historicalForm: document.querySelector('#historical-form'),
+  strategyForm: document.querySelector('#strategy-form'),
   realtimeForm: document.querySelector('#realtime-form'),
   historicalSubmit: document.querySelector('#historical-submit'),
+  strategySubmit: document.querySelector('#strategy-submit'),
   realtimeSubmit: document.querySelector('#realtime-submit'),
   historicalReset: document.querySelector('#historical-reset'),
+  strategyReset: document.querySelector('#strategy-reset'),
   realtimeReset: document.querySelector('#realtime-reset'),
   exportSummary: document.querySelector('#export-summary'),
   exportPreview: document.querySelector('#export-preview'),
@@ -90,8 +93,7 @@ function applyFormValues(form, values) {
   });
 }
 
-function serializeHistoricalForm() {
-  const form = elements.historicalForm;
+function serializeBaseExportForm(form) {
   return {
     symbol: form.symbol.value.trim(),
     timeframe: form.timeframe.value.trim(),
@@ -103,6 +105,26 @@ function serializeHistoricalForm() {
     server: form.server.value,
     outputDir: form.outputDir.value.trim(),
     timeoutMs: Number(form.timeoutMs.value),
+  };
+}
+
+function serializeHistoricalForm() {
+  return serializeBaseExportForm(elements.historicalForm);
+}
+
+function serializeStrategyForm() {
+  const form = elements.strategyForm;
+  return {
+    ...serializeBaseExportForm(form),
+    length: Number(form.length.value),
+    maType: form.maType.value,
+    mult: Number(form.mult.value),
+    alpha: Number(form.alpha.value),
+    adxThreshold: Number(form.adxThreshold.value),
+    adxLength: Number(form.adxLength.value),
+    diLength: Number(form.diLength.value),
+    startDate: form.startDate.value.trim(),
+    endDate: form.endDate.value.trim(),
   };
 }
 
@@ -134,7 +156,7 @@ function renderMetrics() {
   elements.metricStopped.textContent = String(stopped);
   elements.metricErrors.textContent = String(errors);
   elements.metricExport.textContent = appState.lastExport
-    ? appState.lastExport.resolvedSymbol
+    ? appState.lastExport.metricLabel || appState.lastExport.resolvedSymbol
     : 'None';
 }
 
@@ -147,10 +169,10 @@ function renderExportResult() {
 
   const result = appState.lastExport;
   elements.exportSummary.textContent = [
-    `${result.resolvedSymbol}`,
+    result.summaryLabel || result.exportLabel || result.resolvedSymbol || 'Export',
     `${result.periodCount} candles`,
     result.outputPath,
-  ].join(' • ');
+  ].filter(Boolean).join(' | ');
   elements.exportPreview.textContent = result.preview || 'No preview available.';
 }
 
@@ -192,7 +214,7 @@ function renderListeners() {
       `${listener.timeframe || '?'}`,
       `range ${listener.range ?? '?'}`,
       listener.startedAt ? `started ${formatIso(listener.startedAt)}` : '',
-    ].filter(Boolean).join(' • ');
+    ].filter(Boolean).join(' | ');
     chip.textContent = listener.status || 'unknown';
     chip.className = `status-chip ${listener.status === 'running'
       ? 'is-live'
@@ -254,13 +276,16 @@ function setStreamStatus(isLive) {
 
 function hydrateSelects(constants) {
   buildSelectOptions(elements.historicalForm.searchType, constants.supportedSearchTypes, true);
+  buildSelectOptions(elements.strategyForm.searchType, constants.supportedSearchTypes, true);
   buildSelectOptions(elements.realtimeForm.searchType, constants.supportedSearchTypes, true);
 
   const servers = ['auto', ...constants.supportedServers];
   buildSelectOptions(elements.historicalForm.server, servers, false);
+  buildSelectOptions(elements.strategyForm.server, servers, false);
   buildSelectOptions(elements.realtimeForm.server, servers, false);
 
   buildSelectOptions(elements.historicalForm.proxyProtocol, constants.supportedProxyProtocols, false);
+  buildSelectOptions(elements.strategyForm.proxyProtocol, constants.supportedProxyProtocols, false);
   buildSelectOptions(elements.realtimeForm.proxyProtocol, constants.supportedProxyProtocols, false);
 }
 
@@ -270,12 +295,16 @@ function hydrateState(payload) {
   appState.listeners = new Map(
     (payload.listeners || []).map((listener) => [listener.id, listener]),
   );
+  appState.lastExport = (payload.recentEvents || [])
+    .filter((event) => event.type === 'export-completed')
+    .slice(-1)[0] || null;
 
   elements.panelTitle.textContent = payload.panel.title;
   elements.panelUrl.textContent = payload.panel.url;
 
   hydrateSelects(payload.constants);
   applyFormValues(elements.historicalForm, payload.defaults.historical);
+  applyFormValues(elements.strategyForm, payload.defaults.strategyExport);
   applyFormValues(elements.realtimeForm, payload.defaults.realtime);
 
   (payload.recentEvents || [])
@@ -327,6 +356,26 @@ function handleEvent(event) {
   }
 }
 
+async function submitExportRequest(url, payload, button) {
+  button.disabled = true;
+
+  try {
+    const result = await postJson(url, payload);
+    appState.lastExport = result.result;
+    renderExportResult();
+    renderMetrics();
+  } catch (error) {
+    appendLog({
+      timestamp: new Date().toISOString(),
+      scope: 'export',
+      level: 'error',
+      message: error.message,
+    });
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function initialize() {
   const response = await fetch('/api/state');
   const payload = await response.json();
@@ -355,23 +404,20 @@ async function initialize() {
 
   elements.historicalForm.addEventListener('submit', async (submitEvent) => {
     submitEvent.preventDefault();
-    elements.historicalSubmit.disabled = true;
+    await submitExportRequest(
+      '/api/export',
+      serializeHistoricalForm(),
+      elements.historicalSubmit,
+    );
+  });
 
-    try {
-      const result = await postJson('/api/export', serializeHistoricalForm());
-      appState.lastExport = result.result;
-      renderExportResult();
-      renderMetrics();
-    } catch (error) {
-      appendLog({
-        timestamp: new Date().toISOString(),
-        scope: 'export',
-        level: 'error',
-        message: error.message,
-      });
-    } finally {
-      elements.historicalSubmit.disabled = false;
-    }
+  elements.strategyForm.addEventListener('submit', async (submitEvent) => {
+    submitEvent.preventDefault();
+    await submitExportRequest(
+      '/api/strategy-export',
+      serializeStrategyForm(),
+      elements.strategySubmit,
+    );
   });
 
   elements.realtimeForm.addEventListener('submit', async (submitEvent) => {
@@ -397,6 +443,11 @@ async function initialize() {
   elements.historicalReset.addEventListener('click', () => {
     if (!appState.defaults) return;
     applyFormValues(elements.historicalForm, appState.defaults.historical);
+  });
+
+  elements.strategyReset.addEventListener('click', () => {
+    if (!appState.defaults) return;
+    applyFormValues(elements.strategyForm, appState.defaults.strategyExport);
   });
 
   elements.realtimeReset.addEventListener('click', () => {

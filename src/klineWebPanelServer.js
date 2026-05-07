@@ -13,6 +13,13 @@ const {
   normalizeRealtimeOptions,
   startRealtimeListener,
 } = require('./klineService');
+const {
+  DEFAULT_DEMO_BOLLINGER_ADX_EXPORT_OPTIONS,
+  buildDemoBollingerAdxSignalContext,
+  buildDemoBollingerAdxSignalOutputPath,
+  createDemoBollingerAdxStrategy,
+  normalizeDemoBollingerAdxOptions,
+} = require('./klineStrategySignals');
 const { formatErrorMessage, genSessionID } = require('./utils');
 
 const DEFAULT_PANEL_OPTIONS = Object.freeze({
@@ -24,6 +31,17 @@ const DEFAULT_PANEL_OPTIONS = Object.freeze({
 
 const JSON_LIMIT_BYTES = 1024 * 1024;
 const EVENT_HISTORY_LIMIT = 200;
+const DEMO_BOLLINGER_ADX_STRATEGY = createDemoBollingerAdxStrategy();
+const HISTORICAL_EXPORT_META = Object.freeze({
+  exportType: 'historical',
+  exportLabel: 'Historical CSV',
+  strategyName: '',
+});
+const STRATEGY_EXPORT_META = Object.freeze({
+  exportType: 'strategy',
+  exportLabel: 'Bollinger + ADX Signals',
+  strategyName: DEMO_BOLLINGER_ADX_STRATEGY.name,
+});
 
 function normalizePanelOptions(input = {}) {
   const raw = { ...DEFAULT_PANEL_OPTIONS, ...input };
@@ -79,6 +97,23 @@ function sendError(res, statusCode, error) {
     ok: false,
     error: formatErrorMessage(error),
   });
+}
+
+function decorateExportResult(result, exportMeta) {
+  const exportLabel = exportMeta.exportLabel || 'Export';
+  const resolvedSymbol = result.resolvedSymbol || result.inputSymbol || '';
+  const summaryLabel = resolvedSymbol
+    ? `${exportLabel} | ${resolvedSymbol}`
+    : exportLabel;
+
+  return {
+    ...result,
+    exportType: exportMeta.exportType,
+    exportLabel,
+    strategyName: exportMeta.strategyName || '',
+    metricLabel: exportLabel,
+    summaryLabel,
+  };
 }
 
 function readJsonBody(req) {
@@ -206,28 +241,41 @@ async function startKlineWebPanel(input = {}) {
     },
     defaults: {
       historical: normalizeHistoricalOptions(DEFAULT_HISTORICAL_OPTIONS),
+      strategyExport: normalizeHistoricalOptions(DEFAULT_DEMO_BOLLINGER_ADX_EXPORT_OPTIONS),
       realtime: normalizeRealtimeOptions(DEFAULT_REALTIME_OPTIONS),
     },
     listeners: [...listenerStates.values()].sort(sortListeners),
     recentEvents: [...eventHistory],
   });
 
-  const createHistoricalHooks = (jobId) => ({
+  const createExportHooks = (jobId, exportMeta, onEventSeen = () => {}) => ({
     onLog(entry) {
       broadcast({
         type: 'log',
         scope: 'export',
         jobId,
+        exportType: exportMeta.exportType,
         level: entry.level,
         message: entry.message,
         timestamp: entry.timestamp,
       });
     },
     onEvent(event) {
+      onEventSeen(event);
+
+      const payload = event.type === 'export-completed'
+        ? decorateExportResult(event, exportMeta)
+        : {
+            ...event,
+            exportType: exportMeta.exportType,
+            exportLabel: exportMeta.exportLabel,
+            strategyName: exportMeta.strategyName || '',
+          };
+
       broadcast({
         scope: 'export',
         jobId,
-        ...event,
+        ...payload,
       });
     },
   });
@@ -288,32 +336,60 @@ async function startKlineWebPanel(input = {}) {
     res.end(asset.body);
   };
 
-  const handleStartExport = async (req, res) => {
+  const handleExportRequest = async (
+    req,
+    res,
+    {
+      exportMeta,
+      buildPayload = (payload) => payload,
+      exportOptions = {},
+    },
+  ) => {
     const jobId = genSessionID('exp');
-    const payload = await readJsonBody(req);
-
-    broadcast({
-      type: 'export-requested',
-      scope: 'export',
-      jobId,
-      options: payload,
-    });
+    const rawPayload = await readJsonBody(req);
+    let exportEventSeen = false;
 
     try {
-      const result = await exportHistoricalKlines(payload, createHistoricalHooks(jobId));
+      const payload = buildPayload(rawPayload);
+
+      broadcast({
+        type: 'export-requested',
+        scope: 'export',
+        jobId,
+        exportType: exportMeta.exportType,
+        exportLabel: exportMeta.exportLabel,
+        strategyName: exportMeta.strategyName || '',
+        options: payload,
+      });
+
+      const result = await exportHistoricalKlines(
+        payload,
+        createExportHooks(jobId, exportMeta, (event) => {
+          if (event.type === 'export-started' || event.type === 'export-failed') {
+            exportEventSeen = true;
+          }
+        }),
+        exportOptions,
+      );
+
       sendJson(res, 200, {
         ok: true,
         jobId,
-        result,
+        result: decorateExportResult(result, exportMeta),
       });
     } catch (error) {
       const message = formatErrorMessage(error);
-      broadcast({
-        type: 'export-failed',
-        scope: 'export',
-        jobId,
-        error: message,
-      });
+      if (!exportEventSeen) {
+        broadcast({
+          type: 'export-failed',
+          scope: 'export',
+          jobId,
+          exportType: exportMeta.exportType,
+          exportLabel: exportMeta.exportLabel,
+          strategyName: exportMeta.strategyName || '',
+          error: message,
+        });
+      }
       sendJson(res, 500, {
         ok: false,
         jobId,
@@ -463,7 +539,27 @@ async function startKlineWebPanel(input = {}) {
     }
 
     if (method === 'POST' && pathname === '/api/export') {
-      await handleStartExport(req, res);
+      await handleExportRequest(req, res, {
+        exportMeta: HISTORICAL_EXPORT_META,
+      });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/strategy-export') {
+      await handleExportRequest(req, res, {
+        exportMeta: STRATEGY_EXPORT_META,
+        buildPayload(payload) {
+          return {
+            ...payload,
+            ...normalizeDemoBollingerAdxOptions(payload),
+          };
+        },
+        exportOptions: {
+          columns: DEMO_BOLLINGER_ADX_STRATEGY.columns,
+          buildContext: buildDemoBollingerAdxSignalContext,
+          outputPathBuilder: buildDemoBollingerAdxSignalOutputPath,
+        },
+      });
       return;
     }
 

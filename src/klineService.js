@@ -197,7 +197,10 @@ function normalizeHistoricalOptions(input = {}) {
     throw new Error('timeout-ms must be a positive integer');
   }
 
-  return options;
+  return {
+    ...raw,
+    ...options,
+  };
 }
 
 function normalizeRealtimeOptions(input = {}) {
