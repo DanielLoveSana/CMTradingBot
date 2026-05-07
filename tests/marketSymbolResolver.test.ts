@@ -107,7 +107,7 @@ describe('resolveMarketSymbol', () => {
     });
   });
 
-  it('accepts a full symbol directly without touching the cache', async () => {
+  it('stores a full symbol directly when the config misses', async () => {
     const resolved = await resolveMarketSymbol('NASDAQ:AAPL', {
       configPath: TEST_CONFIG_PATH,
       searchMarket: async () => {
@@ -119,11 +119,81 @@ describe('resolveMarketSymbol', () => {
       id: 'NASDAQ:AAPL',
       exchange: 'NASDAQ',
       symbol: 'AAPL',
+      alias: 'AAPL',
       source: 'direct',
       cached: false,
+      persisted: true,
     });
 
-    expect(loadSymbolConfig(TEST_CONFIG_PATH).aliases).toEqual({});
+    expect(loadSymbolConfig(TEST_CONFIG_PATH).aliases.AAPL).toMatchObject({
+      id: 'NASDAQ:AAPL',
+      exchange: 'NASDAQ',
+      symbol: 'AAPL',
+      alias: 'AAPL',
+    });
+  });
+
+  it('reuses an existing config entry for a direct full symbol', async () => {
+    setSymbolAliasRecord('Apple', {
+      id: 'NASDAQ:AAPL',
+      symbol: 'AAPL',
+      exchange: 'NASDAQ',
+    }, TEST_CONFIG_PATH);
+
+    const resolved = await resolveMarketSymbol('NASDAQ:AAPL', {
+      configPath: TEST_CONFIG_PATH,
+      searchMarket: async () => {
+        throw new Error('search should not be called');
+      },
+    });
+
+    expect(resolved).toMatchObject({
+      id: 'NASDAQ:AAPL',
+      symbol: 'AAPL',
+      exchange: 'NASDAQ',
+      alias: 'APPLE',
+      source: 'cache',
+      cached: true,
+      persisted: false,
+    });
+
+    expect(Object.keys(loadSymbolConfig(TEST_CONFIG_PATH).aliases)).toEqual(['APPLE']);
+  });
+
+  it('falls back to the full symbol alias when the short symbol is already used', async () => {
+    setSymbolAliasRecord('BTCUSDT', {
+      id: 'BINANCE:BTCUSDT',
+      symbol: 'BTCUSDT',
+      exchange: 'BINANCE',
+    }, TEST_CONFIG_PATH);
+
+    const resolved = await resolveMarketSymbol('BYBIT:BTCUSDT', {
+      configPath: TEST_CONFIG_PATH,
+      searchMarket: async () => {
+        throw new Error('search should not be called');
+      },
+    });
+
+    expect(resolved).toMatchObject({
+      id: 'BYBIT:BTCUSDT',
+      symbol: 'BTCUSDT',
+      exchange: 'BYBIT',
+      alias: 'BYBIT:BTCUSDT',
+      source: 'direct',
+      cached: false,
+      persisted: true,
+    });
+
+    const config = loadSymbolConfig(TEST_CONFIG_PATH);
+    expect(config.aliases.BTCUSDT).toMatchObject({
+      id: 'BINANCE:BTCUSDT',
+    });
+    expect(config.aliases['BYBIT:BTCUSDT']).toMatchObject({
+      id: 'BYBIT:BTCUSDT',
+      symbol: 'BTCUSDT',
+      exchange: 'BYBIT',
+      alias: 'BYBIT:BTCUSDT',
+    });
   });
 
   it('throws when search results are too vague to auto-resolve', async () => {

@@ -22,6 +22,23 @@ module.exports = {
       "alias": "BTCUSDT",
       "updatedAt": "2026-04-29T10:04:30.818Z"
     },
+    "ETHUSDT.P": {
+      "id": "BINANCE:ETHUSDT.P",
+      "exchange": "Binance",
+      "fullExchange": "Binance",
+      "symbol": "ETHUSDT.P",
+      "description": "Ethereum / TetherUS PERPETUAL CONTRACT",
+      "type": "swap",
+      "alias": "ETHUSDT.P",
+      "updatedAt": "2026-05-07T15:53:24.574Z"
+    },
+    "OKX:ETHUSDT.P": {
+      "id": "OKX:ETHUSDT.P",
+      "exchange": "OKX",
+      "symbol": "ETHUSDT.P",
+      "alias": "OKX:ETHUSDT.P",
+      "updatedAt": "2026-05-07T16:44:17.060Z"
+    },
     "SPY": {
       "id": "AMEX:SPY",
       "exchange": "NYSE",

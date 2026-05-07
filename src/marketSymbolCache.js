@@ -10,6 +10,10 @@ function normalizeAliasKey(alias) {
     .toUpperCase();
 }
 
+function normalizeMarketSymbolId(id) {
+  return String(id || '').trim().toUpperCase();
+}
+
 function isFullMarketSymbol(value) {
   const input = String(value || '').trim();
   return /^[^:\s]+:[^:\s].*$/.test(input);
@@ -91,6 +95,28 @@ function getSymbolAliasRecord(alias, configPath = DEFAULT_CONFIG_PATH) {
   return config.aliases[key] || null;
 }
 
+function findSymbolAliasEntryById(id, configPath = DEFAULT_CONFIG_PATH) {
+  const normalizedId = normalizeMarketSymbolId(id);
+  if (!normalizedId) return null;
+
+  const config = loadSymbolConfig(configPath);
+  const aliases = config && typeof config.aliases === 'object' && config.aliases !== null
+    ? config.aliases
+    : {};
+
+  const match = Object.entries(aliases).find(([, record]) => (
+    normalizeMarketSymbolId(extractMarketSymbolId(record)) === normalizedId
+  ));
+
+  if (!match) return null;
+
+  const [alias, record] = match;
+  return {
+    alias,
+    record,
+  };
+}
+
 function setSymbolAliasRecord(alias, record, configPath = DEFAULT_CONFIG_PATH) {
   const key = normalizeAliasKey(alias);
   if (!key) {
@@ -118,10 +144,12 @@ module.exports = {
   DEFAULT_CONFIG_PATH,
   ensureConfigFile,
   extractMarketSymbolId,
+  findSymbolAliasEntryById,
   getSymbolAliasRecord,
   isFullMarketSymbol,
   loadSymbolConfig,
   normalizeAliasKey,
+  normalizeMarketSymbolId,
   saveSymbolConfig,
   setSymbolAliasRecord,
 };

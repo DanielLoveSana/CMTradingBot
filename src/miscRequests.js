@@ -281,7 +281,7 @@ module.exports = {
   /**
    * Resolve a keyword, short symbol or full symbol into a complete TradingView symbol.
    * The resolver first checks the local config script, then falls back to searchMarketV3.
-   * Search hits are written back to the config for later reuse.
+   * Search hits and new direct full symbols can be written back to the config for later reuse.
    * @function resolveMarketSymbol
    * @param {string} input Keyword, short symbol or full symbol
    * @param {{
@@ -294,13 +294,15 @@ module.exports = {
    * @returns {Promise<{
    *   input: string,
    *   id: string,
+   *   alias?: string,
    *   exchange?: string,
    *   fullExchange?: string,
    *   symbol?: string,
    *   description?: string,
    *   type?: string,
    *   source: 'cache' | 'search' | 'direct',
-   *   cached: boolean
+   *   cached: boolean,
+   *   persisted?: boolean
    * }>} Resolution result
    */
   async resolveMarketSymbol(input, options = {}) {

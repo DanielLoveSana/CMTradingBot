@@ -1,6 +1,7 @@
 const {
   DEFAULT_CONFIG_PATH,
   extractMarketSymbolId,
+  findSymbolAliasEntryById,
   getSymbolAliasRecord,
   isFullMarketSymbol,
   normalizeAliasKey,
@@ -29,6 +30,68 @@ function toAliasRecord(market, alias) {
     type: market.type,
     alias: normalizeAliasKey(alias),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function toDirectAliasRecord(id, exchange, symbol, alias) {
+  return {
+    id,
+    exchange,
+    symbol,
+    alias: normalizeAliasKey(alias),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildCachedResolution(input, record, alias = '') {
+  const cachedId = extractMarketSymbolId(record);
+  const normalizedAlias = normalizeAliasKey(alias);
+  const base = {
+    input,
+    id: cachedId,
+    source: 'cache',
+    cached: true,
+    persisted: false,
+  };
+
+  if (typeof record !== 'object' || record === null) {
+    return normalizedAlias
+      ? {
+        ...base,
+        alias: normalizedAlias,
+      }
+      : base;
+  }
+
+  return {
+    ...base,
+    ...record,
+    alias: record.alias || normalizedAlias,
+  };
+}
+
+function persistDirectSymbolRecord(id, configPath) {
+  const [exchange, ...symbolParts] = id.split(':');
+  const symbol = symbolParts.join(':');
+  const candidates = [symbol, id].filter(Boolean);
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const alias = candidates[index];
+    const existingRecord = getSymbolAliasRecord(alias, configPath);
+    const existingId = extractMarketSymbolId(existingRecord);
+
+    if (!existingId) {
+      setSymbolAliasRecord(alias, toDirectAliasRecord(id, exchange, symbol, alias), configPath);
+      return {
+        persisted: true,
+        alias: normalizeAliasKey(alias),
+      };
+    }
+  }
+
+  return {
+    persisted: false,
+    alias: '',
   };
 }
 
@@ -126,24 +189,30 @@ async function resolveMarketSymbol(input, options = {}) {
   const cachedId = extractMarketSymbolId(cachedRecord);
 
   if (cachedId) {
-    return {
-      input: search,
-      id: cachedId,
-      source: 'cache',
-      cached: true,
-      ...(typeof cachedRecord === 'object' ? cachedRecord : {}),
-    };
+    return buildCachedResolution(search, cachedRecord, search);
   }
 
   if (isFullMarketSymbol(search)) {
+    const cachedEntry = findSymbolAliasEntryById(search, configPath);
+    if (cachedEntry) {
+      return buildCachedResolution(search, cachedEntry.record, cachedEntry.alias);
+    }
+
     const [exchange, ...symbolParts] = search.split(':');
+    const symbol = symbolParts.join(':');
+    const directPersistence = persist
+      ? persistDirectSymbolRecord(search, configPath)
+      : { persisted: false, alias: '' };
+
     return {
       input: search,
       id: search,
       exchange,
-      symbol: symbolParts.join(':'),
+      symbol,
+      alias: directPersistence.alias,
       source: 'direct',
       cached: false,
+      persisted: directPersistence.persisted,
     };
   }
 
@@ -167,10 +236,12 @@ async function resolveMarketSymbol(input, options = {}) {
     type: selected.type,
     source: 'search',
     cached: false,
+    persisted: false,
   };
 
   if (persist) {
     setSymbolAliasRecord(search, toAliasRecord(selected, search), configPath);
+    resolved.persisted = true;
   }
 
   return resolved;

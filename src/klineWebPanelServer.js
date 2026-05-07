@@ -13,6 +13,7 @@ const {
   normalizeRealtimeOptions,
   startRealtimeListener,
 } = require('./klineService');
+const { loadSymbolConfig } = require('./marketSymbolCache');
 const {
   DEFAULT_DEMO_BOLLINGER_ADX_EXPORT_OPTIONS,
   buildDemoBollingerAdxSignalContext,
@@ -25,7 +26,7 @@ const { formatErrorMessage, genSessionID } = require('./utils');
 const DEFAULT_PANEL_OPTIONS = Object.freeze({
   host: '127.0.0.1',
   port: 3210,
-  title: 'TradingView K-Line Control Room',
+  title: 'TradingView K 线控制台',
   publicDir: path.join(__dirname, '..', 'web', 'kline-panel'),
 });
 
@@ -34,12 +35,12 @@ const EVENT_HISTORY_LIMIT = 200;
 const DEMO_BOLLINGER_ADX_STRATEGY = createDemoBollingerAdxStrategy();
 const HISTORICAL_EXPORT_META = Object.freeze({
   exportType: 'historical',
-  exportLabel: 'Historical CSV',
+  exportLabel: '历史 K 线 CSV',
   strategyName: '',
 });
 const STRATEGY_EXPORT_META = Object.freeze({
   exportType: 'strategy',
-  exportLabel: 'Bollinger + ADX Signals',
+  exportLabel: '布林带 + ADX 信号',
   strategyName: DEMO_BOLLINGER_ADX_STRATEGY.name,
 });
 
@@ -114,6 +115,56 @@ function decorateExportResult(result, exportMeta) {
     metricLabel: exportLabel,
     summaryLabel,
   };
+}
+
+function buildSymbolCatalog() {
+  const config = loadSymbolConfig();
+  const aliases = config && config.aliases ? config.aliases : {};
+
+  return Object.entries(aliases)
+    .map(([alias, record]) => {
+      if (typeof record === 'string') {
+        return {
+          alias,
+          id: record,
+          exchange: '',
+          fullExchange: '',
+          symbol: alias,
+          description: '',
+          type: '',
+          updatedAt: '',
+        };
+      }
+
+      return {
+        alias,
+        id: record.id || '',
+        exchange: record.exchange || '',
+        fullExchange: record.fullExchange || '',
+        symbol: record.symbol || alias,
+        description: record.description || '',
+        type: record.type || '',
+        updatedAt: record.updatedAt || '',
+      };
+    })
+    .filter((entry) => entry.id)
+    .sort((left, right) => {
+      const leftType = String(left.type || '').toLowerCase();
+      const rightType = String(right.type || '').toLowerCase();
+      if (leftType !== rightType) {
+        return leftType.localeCompare(rightType);
+      }
+
+      const leftExchange = String(left.exchange || left.fullExchange || '').toLowerCase();
+      const rightExchange = String(right.exchange || right.fullExchange || '').toLowerCase();
+      if (leftExchange !== rightExchange) {
+        return leftExchange.localeCompare(rightExchange);
+      }
+
+      return String(left.alias || left.symbol || '').localeCompare(
+        String(right.alias || right.symbol || ''),
+      );
+    });
 }
 
 function readJsonBody(req) {
@@ -226,6 +277,14 @@ async function startKlineWebPanel(input = {}) {
     });
   };
 
+  const broadcastSymbolCatalog = () => {
+    broadcast({
+      type: 'symbol-catalog-updated',
+      scope: 'panel',
+      symbolCatalog: buildSymbolCatalog(),
+    });
+  };
+
   const getState = () => ({
     ok: true,
     panel: {
@@ -234,6 +293,7 @@ async function startKlineWebPanel(input = {}) {
       title: options.title,
       url: `http://${options.host}:${options.port}`,
     },
+    symbolCatalog: buildSymbolCatalog(),
     constants: {
       supportedServers: SUPPORTED_SERVERS,
       supportedProxyProtocols: SUPPORTED_PROXY_PROTOCOLS,
@@ -372,6 +432,10 @@ async function startKlineWebPanel(input = {}) {
         exportOptions,
       );
 
+      if (result.resolution && result.resolution.persisted) {
+        broadcastSymbolCatalog();
+      }
+
       sendJson(res, 200, {
         ok: true,
         jobId,
@@ -419,6 +483,10 @@ async function startKlineWebPanel(input = {}) {
 
       activeControllers.set(listenerId, controller);
       listenerStates.set(listenerId, controller.getState());
+
+      if (controller.getState().resolution && controller.getState().resolution.persisted) {
+        broadcastSymbolCatalog();
+      }
 
       controller.whenStopped.then((finalState) => {
         listenerStates.set(listenerId, finalState);

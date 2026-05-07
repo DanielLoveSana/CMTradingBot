@@ -1,296 +1,519 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TradingView K-Line Control Room</title>
+  <title>TradingView K 线控制台</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="backdrop"></div>
-  <header class="hero">
-    <div class="hero-copy">
-      <p class="eyebrow">Local TradingView Operations</p>
-      <h1 id="panel-title">K-Line Control Room</h1>
-      <p class="hero-text">
-        Launch historical CSV exports, strategy signal exports, and realtime K-line listeners without touching the CLI.
-      </p>
-    </div>
-    <div class="hero-status">
-      <div class="status-block">
-        <span class="status-label">Panel</span>
-        <strong id="panel-url">Starting...</strong>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-card">
+        <p class="eyebrow">本地 TradingView 操作台</p>
+        <h1 id="panel-title">TradingView K 线控制台</h1>
+        <p class="brand-text">
+          将历史导出、策略信号、实时监听拆成独立界面，通过左侧导航快速切换。
+        </p>
       </div>
-      <div class="status-block">
-        <span class="status-label">Event Stream</span>
-        <strong id="stream-status" class="status-chip is-pending">Connecting</strong>
-      </div>
-    </div>
-  </header>
 
-  <main class="layout">
-    <section class="card metrics-card">
-      <div class="card-head">
-        <h2>Live Snapshot</h2>
-        <p>Current panel activity at a glance.</p>
+      <div class="sidebar-status">
+        <div class="status-block">
+          <span class="status-label">服务地址</span>
+          <strong id="panel-url">启动中...</strong>
+        </div>
+        <div class="status-block">
+          <span class="status-label">事件流</span>
+          <strong id="stream-status" class="status-chip is-pending">连接中</strong>
+        </div>
       </div>
-      <div class="metrics-grid">
-        <article class="metric">
-          <span class="metric-label">Running Listeners</span>
-          <strong id="metric-running">0</strong>
-        </article>
-        <article class="metric">
-          <span class="metric-label">Stopped / Idle</span>
-          <strong id="metric-stopped">0</strong>
-        </article>
-        <article class="metric">
-          <span class="metric-label">Errors</span>
-          <strong id="metric-errors">0</strong>
-        </article>
-        <article class="metric">
-          <span class="metric-label">Last Export</span>
-          <strong id="metric-export">None</strong>
-        </article>
-      </div>
-    </section>
 
-    <section class="card form-card">
-      <div class="card-head">
-        <h2>Historical Export</h2>
-        <p>Fetch a candle range and write it to CSV.</p>
-      </div>
-      <form id="historical-form" class="control-form">
-        <div class="form-grid">
-          <label>
-            <span>Symbol</span>
-            <input name="symbol" placeholder="BINANCE:BTCUSDT" required>
-          </label>
-          <label>
-            <span>Timeframe</span>
-            <input name="timeframe" placeholder="15" required>
-          </label>
-          <label>
-            <span>Range</span>
-            <input name="range" type="number" required>
-          </label>
-          <label>
-            <span>To Timestamp / ISO</span>
-            <input name="to" placeholder="2026-04-27T00:00:00Z">
-          </label>
-          <label>
-            <span>Search Type</span>
-            <select name="searchType"></select>
-          </label>
-          <label>
-            <span>Server</span>
-            <select name="server"></select>
-          </label>
-          <label>
-            <span>Proxy</span>
-            <input name="proxy" placeholder="127.0.0.1:10808">
-          </label>
-          <label>
-            <span>Proxy Protocol</span>
-            <select name="proxyProtocol"></select>
-          </label>
-          <label class="span-2">
-            <span>Output Directory</span>
-            <input name="outputDir" placeholder="data/klines">
-          </label>
-          <label>
-            <span>Timeout (ms)</span>
-            <input name="timeoutMs" type="number" required>
-          </label>
+      <nav class="tab-nav" aria-label="功能导航">
+        <button type="button" class="tab-link is-active" data-tab-trigger="overview">
+          <span class="tab-link-title">总览</span>
+          <span class="tab-link-text">查看当前状态与缓存目录</span>
+        </button>
+        <button type="button" class="tab-link" data-tab-trigger="historical">
+          <span class="tab-link-title">历史导出</span>
+          <span class="tab-link-text">导出指定区间 K 线 CSV</span>
+        </button>
+        <button type="button" class="tab-link" data-tab-trigger="strategy">
+          <span class="tab-link-title">策略信号</span>
+          <span class="tab-link-text">导出布林带 + ADX 信号</span>
+        </button>
+        <button type="button" class="tab-link" data-tab-trigger="realtime">
+          <span class="tab-link-title">实时监听</span>
+          <span class="tab-link-text">启动持续更新的监听任务</span>
+        </button>
+        <button type="button" class="tab-link" data-tab-trigger="listeners">
+          <span class="tab-link-title">监听列表</span>
+          <span class="tab-link-text">查看与停止已启动监听</span>
+        </button>
+        <button type="button" class="tab-link" data-tab-trigger="console">
+          <span class="tab-link-title">事件控制台</span>
+          <span class="tab-link-text">查看导出与监听日志流</span>
+        </button>
+      </nav>
+    </aside>
+
+    <main class="main-shell">
+      <section class="tab-panel is-active" data-tab-panel="overview">
+        <div class="section-head">
+          <p class="eyebrow">总览</p>
+          <h2>本地任务状态</h2>
+          <p>把最常用的信息集中在这里，先看状态，再切到左侧功能页执行操作。</p>
         </div>
 
-        <div class="form-actions">
-          <button type="submit" id="historical-submit">Export CSV</button>
-          <button type="button" id="historical-reset" class="ghost">Reset</button>
-        </div>
-      </form>
+        <section class="card metrics-card">
+          <div class="card-head">
+            <div>
+              <h3>运行概览</h3>
+              <p>当前导出与监听状态一眼可见。</p>
+            </div>
+          </div>
+          <div class="metrics-grid">
+            <article class="metric">
+              <span class="metric-label">运行中的监听</span>
+              <strong id="metric-running">0</strong>
+            </article>
+            <article class="metric">
+              <span class="metric-label">已停止 / 空闲</span>
+              <strong id="metric-stopped">0</strong>
+            </article>
+            <article class="metric">
+              <span class="metric-label">错误任务</span>
+              <strong id="metric-errors">0</strong>
+            </article>
+            <article class="metric">
+              <span class="metric-label">缓存标的</span>
+              <strong id="metric-symbols">0</strong>
+            </article>
+            <article class="metric">
+              <span class="metric-label">最近一次导出</span>
+              <strong id="metric-export">暂无</strong>
+            </article>
+          </div>
+        </section>
 
-      <div class="result-panel">
-        <div class="result-head">
-          <h3>Last Export Result</h3>
-          <p id="export-summary">No export yet.</p>
-        </div>
-        <pre id="export-preview" class="preview-box">Preview will appear here.</pre>
-      </div>
-    </section>
+        <div class="panel-grid">
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h3>最近一次导出结果</h3>
+                <p>历史导出和策略导出都会同步显示在这里。</p>
+              </div>
+            </div>
+            <div class="result-panel">
+              <p data-export-summary>暂无导出记录。</p>
+              <pre data-export-preview class="preview-box">导出预览会显示在这里。</pre>
+            </div>
+          </section>
 
-    <section class="card form-card strategy-card">
-      <div class="card-head">
-        <h2>Strategy Signal Export</h2>
-        <p>Generate signal-only CSV from the demo Bollinger Bands + ADX strategy without placing orders.</p>
-      </div>
-      <form id="strategy-form" class="control-form">
-        <div class="form-grid">
-          <label>
-            <span>Symbol</span>
-            <input name="symbol" placeholder="BINANCE:BTCUSDT" required>
-          </label>
-          <label>
-            <span>Timeframe</span>
-            <input name="timeframe" placeholder="15" required>
-          </label>
-          <label>
-            <span>Range</span>
-            <input name="range" type="number" required>
-          </label>
-          <label>
-            <span>To Timestamp / ISO</span>
-            <input name="to" placeholder="2026-04-27T00:00:00Z">
-          </label>
-          <label>
-            <span>Search Type</span>
-            <select name="searchType"></select>
-          </label>
-          <label>
-            <span>Server</span>
-            <select name="server"></select>
-          </label>
-          <label>
-            <span>Proxy</span>
-            <input name="proxy" placeholder="127.0.0.1:10808">
-          </label>
-          <label>
-            <span>Proxy Protocol</span>
-            <select name="proxyProtocol"></select>
-          </label>
-          <label class="span-2">
-            <span>Output Directory</span>
-            <input name="outputDir" placeholder="data/strategy-signals">
-          </label>
-          <label>
-            <span>Timeout (ms)</span>
-            <input name="timeoutMs" type="number" required>
-          </label>
-          <label>
-            <span>BB Length</span>
-            <input name="length" type="number" required>
-          </label>
-          <label>
-            <span>MA Type</span>
-            <select name="maType">
-              <option value="SMA">SMA</option>
-              <option value="EMA">EMA</option>
-              <option value="RMA">RMA</option>
-              <option value="WMA">WMA</option>
-              <option value="VWMA">VWMA</option>
-              <option value="LLT">LLT</option>
-            </select>
-          </label>
-          <label>
-            <span>BB Multiplier</span>
-            <input name="mult" type="number" step="0.01" required>
-          </label>
-          <label>
-            <span>LLT Alpha</span>
-            <input name="alpha" type="number" step="0.01" required>
-          </label>
-          <label>
-            <span>ADX Threshold</span>
-            <input name="adxThreshold" type="number" step="0.01" required>
-          </label>
-          <label>
-            <span>ADX Length</span>
-            <input name="adxLength" type="number" required>
-          </label>
-          <label>
-            <span>DI Length</span>
-            <input name="diLength" type="number" required>
-          </label>
-          <label>
-            <span>Start Date</span>
-            <input name="startDate" placeholder="2024-11-10T00:00:00Z">
-          </label>
-          <label class="span-2">
-            <span>End Date</span>
-            <input name="endDate" placeholder="2069-12-31T23:59:59Z">
-          </label>
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h3>缓存标的目录</h3>
+                <p>来自项目配置，支持回填到所有表单的标的输入框。</p>
+              </div>
+              <strong id="catalog-count" class="summary-chip">0 个</strong>
+            </div>
+            <div id="catalog-summary" class="catalog-summary">
+              <div class="empty-state">当前还没有缓存标的。</div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="historical">
+        <div class="section-head">
+          <p class="eyebrow">历史导出</p>
+          <h2>导出 K 线 CSV</h2>
+          <p>支持手动输入完整标的，也可以通过缓存目录快速选择。</p>
         </div>
 
-        <div class="form-actions">
-          <button type="submit" id="strategy-submit">Export Signal CSV</button>
-          <button type="button" id="strategy-reset" class="ghost">Reset</button>
+        <section class="card form-card">
+          <div class="card-head">
+            <div>
+              <h3>历史 K 线导出</h3>
+              <p>抓取指定时间范围的蜡烛数据并写入 CSV。</p>
+            </div>
+          </div>
+          <form id="historical-form" class="control-form">
+            <div class="form-grid">
+              <label class="span-2 symbol-field">
+                <span>标的</span>
+                <div class="symbol-combobox" data-symbol-picker>
+                  <div class="symbol-entry">
+                    <input name="symbol" placeholder="例如 BINANCE:BTCUSDT" required autocomplete="off">
+                    <button type="button" class="symbol-picker-toggle" data-picker-toggle aria-expanded="false">
+                      选择缓存标的
+                    </button>
+                  </div>
+                  <div class="symbol-picker" data-picker hidden>
+                    <div class="picker-head">
+                      <div>
+                        <strong>缓存标的选择</strong>
+                        <p>先选主类型，再选交易所或直接选标的。</p>
+                      </div>
+                    </div>
+                    <div class="picker-columns">
+                      <section class="picker-column">
+                        <p class="picker-title">主类型</p>
+                        <div class="picker-list" data-picker-level="category"></div>
+                      </section>
+                      <section class="picker-column">
+                        <p class="picker-title">交易所 / 标的</p>
+                        <div class="picker-list" data-picker-level="exchange"></div>
+                      </section>
+                      <section class="picker-column">
+                        <p class="picker-title">标的</p>
+                        <div class="picker-list" data-picker-level="symbol"></div>
+                      </section>
+                    </div>
+                    <p class="picker-selection" data-picker-selection>当前未选择缓存标的。</p>
+                  </div>
+                </div>
+                <p class="field-hint" data-picker-meta>已缓存 0 个标的，你也可以继续手动输入。</p>
+              </label>
+              <label>
+                <span>周期</span>
+                <input name="timeframe" placeholder="15" required>
+              </label>
+              <label>
+                <span>数量</span>
+                <input name="range" type="number" required>
+              </label>
+              <label>
+                <span>结束时间戳 / ISO</span>
+                <input name="to" placeholder="2026-04-27T00:00:00Z">
+              </label>
+              <label>
+                <span>搜索类型</span>
+                <select name="searchType"></select>
+              </label>
+              <label>
+                <span>服务节点</span>
+                <select name="server"></select>
+              </label>
+              <label>
+                <span>代理地址</span>
+                <input name="proxy" placeholder="127.0.0.1:10808">
+              </label>
+              <label>
+                <span>代理协议</span>
+                <select name="proxyProtocol"></select>
+              </label>
+              <label class="span-2">
+                <span>输出目录</span>
+                <input name="outputDir" placeholder="data/klines">
+              </label>
+              <label>
+                <span>超时（毫秒）</span>
+                <input name="timeoutMs" type="number" required>
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="historical-submit">导出 CSV</button>
+              <button type="button" id="historical-reset" class="ghost">恢复默认</button>
+            </div>
+          </form>
+
+          <div class="result-panel">
+            <div class="result-head">
+              <h3>最近一次导出结果</h3>
+              <p data-export-summary>暂无导出记录。</p>
+            </div>
+            <pre data-export-preview class="preview-box">导出预览会显示在这里。</pre>
+          </div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="strategy">
+        <div class="section-head">
+          <p class="eyebrow">策略信号</p>
+          <h2>导出策略信号 CSV</h2>
+          <p>基于演示版布林带 + ADX 策略，仅导出信号，不进行下单。</p>
         </div>
-      </form>
-    </section>
 
-    <section class="card form-card">
-      <div class="card-head">
-        <h2>Realtime Listener</h2>
-        <p>Start a persistent listener and keep the latest snapshot synced to CSV.</p>
-      </div>
-      <form id="realtime-form" class="control-form">
-        <div class="form-grid">
-          <label>
-            <span>Symbol</span>
-            <input name="symbol" placeholder="BINANCE:BTCUSDT" required>
-          </label>
-          <label>
-            <span>Timeframe</span>
-            <input name="timeframe" placeholder="15" required>
-          </label>
-          <label>
-            <span>Initial Range</span>
-            <input name="range" type="number" required>
-          </label>
-          <label>
-            <span>Search Type</span>
-            <select name="searchType"></select>
-          </label>
-          <label>
-            <span>Server</span>
-            <select name="server"></select>
-          </label>
-          <label>
-            <span>Proxy</span>
-            <input name="proxy" placeholder="127.0.0.1:10808">
-          </label>
-          <label>
-            <span>Proxy Protocol</span>
-            <select name="proxyProtocol"></select>
-          </label>
-          <label class="span-2">
-            <span>Output Directory</span>
-            <input name="outputDir" placeholder="data/realtime">
-          </label>
-          <label>
-            <span>Connect Timeout (ms)</span>
-            <input name="connectTimeoutMs" type="number" required>
-          </label>
-          <label>
-            <span>Auto Stop After (ms)</span>
-            <input name="exitAfterMs" type="number" min="0">
-          </label>
+        <section class="card form-card">
+          <div class="card-head">
+            <div>
+              <h3>策略信号导出</h3>
+              <p>导出适合复盘和二次分析的信号数据。</p>
+            </div>
+          </div>
+          <form id="strategy-form" class="control-form">
+            <div class="form-grid">
+              <label class="span-2 symbol-field">
+                <span>标的</span>
+                <div class="symbol-combobox" data-symbol-picker>
+                  <div class="symbol-entry">
+                    <input name="symbol" placeholder="例如 BINANCE:BTCUSDT" required autocomplete="off">
+                    <button type="button" class="symbol-picker-toggle" data-picker-toggle aria-expanded="false">
+                      选择缓存标的
+                    </button>
+                  </div>
+                  <div class="symbol-picker" data-picker hidden>
+                    <div class="picker-head">
+                      <div>
+                        <strong>缓存标的选择</strong>
+                        <p>先选主类型，再选交易所或直接选标的。</p>
+                      </div>
+                    </div>
+                    <div class="picker-columns">
+                      <section class="picker-column">
+                        <p class="picker-title">主类型</p>
+                        <div class="picker-list" data-picker-level="category"></div>
+                      </section>
+                      <section class="picker-column">
+                        <p class="picker-title">交易所 / 标的</p>
+                        <div class="picker-list" data-picker-level="exchange"></div>
+                      </section>
+                      <section class="picker-column">
+                        <p class="picker-title">标的</p>
+                        <div class="picker-list" data-picker-level="symbol"></div>
+                      </section>
+                    </div>
+                    <p class="picker-selection" data-picker-selection>当前未选择缓存标的。</p>
+                  </div>
+                </div>
+                <p class="field-hint" data-picker-meta>已缓存 0 个标的，你也可以继续手动输入。</p>
+              </label>
+              <label>
+                <span>周期</span>
+                <input name="timeframe" placeholder="15" required>
+              </label>
+              <label>
+                <span>数量</span>
+                <input name="range" type="number" required>
+              </label>
+              <label>
+                <span>结束时间戳 / ISO</span>
+                <input name="to" placeholder="2026-04-27T00:00:00Z">
+              </label>
+              <label>
+                <span>搜索类型</span>
+                <select name="searchType"></select>
+              </label>
+              <label>
+                <span>服务节点</span>
+                <select name="server"></select>
+              </label>
+              <label>
+                <span>代理地址</span>
+                <input name="proxy" placeholder="127.0.0.1:10808">
+              </label>
+              <label>
+                <span>代理协议</span>
+                <select name="proxyProtocol"></select>
+              </label>
+              <label class="span-2">
+                <span>输出目录</span>
+                <input name="outputDir" placeholder="data/strategy-signals">
+              </label>
+              <label>
+                <span>超时（毫秒）</span>
+                <input name="timeoutMs" type="number" required>
+              </label>
+              <label>
+                <span>BB 长度</span>
+                <input name="length" type="number" required>
+              </label>
+              <label>
+                <span>均线类型</span>
+                <select name="maType">
+                  <option value="SMA">SMA（简单）</option>
+                  <option value="EMA">EMA（指数）</option>
+                  <option value="RMA">RMA</option>
+                  <option value="WMA">WMA（加权）</option>
+                  <option value="VWMA">VWMA（成交量加权）</option>
+                  <option value="LLT">LLT</option>
+                </select>
+              </label>
+              <label>
+                <span>BB 倍数</span>
+                <input name="mult" type="number" step="0.01" required>
+              </label>
+              <label>
+                <span>LLT Alpha</span>
+                <input name="alpha" type="number" step="0.01" required>
+              </label>
+              <label>
+                <span>ADX 阈值</span>
+                <input name="adxThreshold" type="number" step="0.01" required>
+              </label>
+              <label>
+                <span>ADX 长度</span>
+                <input name="adxLength" type="number" required>
+              </label>
+              <label>
+                <span>DI 长度</span>
+                <input name="diLength" type="number" required>
+              </label>
+              <label>
+                <span>开始时间</span>
+                <input name="startDate" placeholder="2024-11-10T00:00:00Z">
+              </label>
+              <label class="span-2">
+                <span>结束时间</span>
+                <input name="endDate" placeholder="2069-12-31T23:59:59Z">
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="strategy-submit">导出信号 CSV</button>
+              <button type="button" id="strategy-reset" class="ghost">恢复默认</button>
+            </div>
+          </form>
+
+          <div class="result-panel">
+            <div class="result-head">
+              <h3>最近一次导出结果</h3>
+              <p data-export-summary>暂无导出记录。</p>
+            </div>
+            <pre data-export-preview class="preview-box">导出预览会显示在这里。</pre>
+          </div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="realtime">
+        <div class="section-head">
+          <p class="eyebrow">实时监听</p>
+          <h2>启动持续监听任务</h2>
+          <p>监听启动后会持续把最新快照写入 CSV，并同步到监听列表页。</p>
         </div>
 
-        <div class="form-actions">
-          <button type="submit" id="realtime-submit">Start Listener</button>
-          <button type="button" id="realtime-reset" class="ghost">Reset</button>
+        <section class="card form-card">
+          <div class="card-head">
+            <div>
+              <h3>实时监听配置</h3>
+              <p>适合持续观察单个标的最新蜡烛变化。</p>
+            </div>
+          </div>
+          <form id="realtime-form" class="control-form">
+            <div class="form-grid">
+              <label class="span-2 symbol-field">
+                <span>标的</span>
+                <div class="symbol-combobox" data-symbol-picker>
+                  <div class="symbol-entry">
+                    <input name="symbol" placeholder="例如 BINANCE:BTCUSDT" required autocomplete="off">
+                    <button type="button" class="symbol-picker-toggle" data-picker-toggle aria-expanded="false">
+                      选择缓存标的
+                    </button>
+                  </div>
+                  <div class="symbol-picker" data-picker hidden>
+                    <div class="picker-head">
+                      <div>
+                        <strong>缓存标的选择</strong>
+                        <p>先选主类型，再选交易所或直接选标的。</p>
+                      </div>
+                    </div>
+                    <div class="picker-columns">
+                      <section class="picker-column">
+                        <p class="picker-title">主类型</p>
+                        <div class="picker-list" data-picker-level="category"></div>
+                      </section>
+                      <section class="picker-column">
+                        <p class="picker-title">交易所 / 标的</p>
+                        <div class="picker-list" data-picker-level="exchange"></div>
+                      </section>
+                      <section class="picker-column">
+                        <p class="picker-title">标的</p>
+                        <div class="picker-list" data-picker-level="symbol"></div>
+                      </section>
+                    </div>
+                    <p class="picker-selection" data-picker-selection>当前未选择缓存标的。</p>
+                  </div>
+                </div>
+                <p class="field-hint" data-picker-meta>已缓存 0 个标的，你也可以继续手动输入。</p>
+              </label>
+              <label>
+                <span>周期</span>
+                <input name="timeframe" placeholder="15" required>
+              </label>
+              <label>
+                <span>初始数量</span>
+                <input name="range" type="number" required>
+              </label>
+              <label>
+                <span>搜索类型</span>
+                <select name="searchType"></select>
+              </label>
+              <label>
+                <span>服务节点</span>
+                <select name="server"></select>
+              </label>
+              <label>
+                <span>代理地址</span>
+                <input name="proxy" placeholder="127.0.0.1:10808">
+              </label>
+              <label>
+                <span>代理协议</span>
+                <select name="proxyProtocol"></select>
+              </label>
+              <label class="span-2">
+                <span>输出目录</span>
+                <input name="outputDir" placeholder="data/realtime">
+              </label>
+              <label>
+                <span>连接超时（毫秒）</span>
+                <input name="connectTimeoutMs" type="number" required>
+              </label>
+              <label>
+                <span>自动停止（毫秒）</span>
+                <input name="exitAfterMs" type="number" min="0">
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="realtime-submit">启动监听</button>
+              <button type="button" id="realtime-reset" class="ghost">恢复默认</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="listeners">
+        <div class="section-head">
+          <p class="eyebrow">监听列表</p>
+          <h2>管理已启动监听</h2>
+          <p>所有从面板启动的监听都会显示在这里，可随时查看状态或停止。</p>
         </div>
-      </form>
-    </section>
 
-    <section class="card listeners-card">
-      <div class="card-head">
-        <h2>Listener Fleet</h2>
-        <p>Track every listener started from this panel and stop active ones on demand.</p>
-      </div>
-      <div id="listener-list" class="listener-list">
-        <div class="empty-state">No listeners have been started yet.</div>
-      </div>
-    </section>
+        <section class="card listeners-card">
+          <div class="card-head">
+            <div>
+              <h3>监听任务</h3>
+              <p>按最近活动时间排序展示。</p>
+            </div>
+          </div>
+          <div id="listener-list" class="listener-list">
+            <div class="empty-state">暂时还没有启动任何监听任务。</div>
+          </div>
+        </section>
+      </section>
 
-    <section class="card console-card">
-      <div class="card-head">
-        <h2>Event Console</h2>
-        <p>Streaming historical export, strategy export, and listener logs from the local panel.</p>
-      </div>
-      <div id="log-stream" class="log-stream"></div>
-    </section>
-  </main>
+      <section class="tab-panel" data-tab-panel="console">
+        <div class="section-head">
+          <p class="eyebrow">事件控制台</p>
+          <h2>实时日志流</h2>
+          <p>查看导出、策略与监听过程中产生的事件和错误日志。</p>
+        </div>
+
+        <section class="card console-card">
+          <div class="card-head">
+            <div>
+              <h3>事件流日志</h3>
+              <p>自动接收当前本地面板推送的日志消息。</p>
+            </div>
+          </div>
+          <div id="log-stream" class="log-stream"></div>
+        </section>
+      </section>
+    </main>
+  </div>
 
   <template id="listener-template">
     <article class="listener-card">
@@ -301,30 +524,30 @@
         </div>
         <div class="listener-actions">
           <span class="status-chip"></span>
-          <button type="button" class="listener-stop ghost">Stop</button>
+          <button type="button" class="listener-stop ghost">停止</button>
         </div>
       </div>
       <dl class="listener-data">
         <div>
-          <dt>Output</dt>
+          <dt>输出路径</dt>
           <dd class="listener-output"></dd>
         </div>
         <div>
-          <dt>Server</dt>
+          <dt>服务节点</dt>
           <dd class="listener-server"></dd>
         </div>
         <div>
-          <dt>Periods</dt>
+          <dt>K 线数量</dt>
           <dd class="listener-periods"></dd>
         </div>
         <div>
-          <dt>Last Event</dt>
+          <dt>最近事件</dt>
           <dd class="listener-updated"></dd>
         </div>
       </dl>
       <div class="listener-candle">
-        <p class="listener-candle-title">Latest Candle</p>
-        <pre class="listener-candle-body">Waiting for data...</pre>
+        <p class="listener-candle-title">最新一根 K 线</p>
+        <pre class="listener-candle-body">等待数据中...</pre>
       </div>
       <p class="listener-error"></p>
     </article>

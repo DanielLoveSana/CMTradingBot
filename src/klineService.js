@@ -304,6 +304,7 @@ function cloneResolution(resolution = {}) {
   return {
     input: resolution.input,
     id: resolution.id,
+    alias: resolution.alias,
     exchange: resolution.exchange,
     fullExchange: resolution.fullExchange,
     symbol: resolution.symbol,
@@ -311,6 +312,7 @@ function cloneResolution(resolution = {}) {
     type: resolution.type,
     source: resolution.source,
     cached: resolution.cached,
+    persisted: resolution.persisted,
   };
 }
 
@@ -337,14 +339,23 @@ async function resolveInputSymbol(options, hooks = {}) {
         emitLog(hooks, 'info', `Resolved "${originalInput}" from config: ${resolution.id}`);
       } else if (resolution.source === 'search') {
         emitLog(hooks, 'info', `Resolved "${originalInput}" via search: ${resolution.id}`);
-        emitLog(
-          hooks,
-          'info',
-          `Saved symbol mapping to: ${getMarketSymbolConfigPath()}`,
-        );
+        if (resolution.persisted) {
+          emitLog(
+            hooks,
+            'info',
+            `Saved symbol mapping to: ${getMarketSymbolConfigPath()}`,
+          );
+        }
         emitLog(hooks, 'info', `Search proxy: ${proxy || 'direct'}`);
       } else {
         emitLog(hooks, 'info', `Using full symbol: ${resolution.id}`);
+        if (resolution.persisted) {
+          emitLog(
+            hooks,
+            'info',
+            `Saved direct symbol mapping to: ${getMarketSymbolConfigPath()}`,
+          );
+        }
       }
 
       if (resolution.description) {
