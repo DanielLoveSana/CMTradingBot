@@ -9,6 +9,7 @@ const DEFAULTS = {
   botToken: process.env.TELEGRAM_BOT_TOKEN || '',
   chatId: process.env.TELEGRAM_CHAT_ID || '',
   apiBaseUrl: process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org',
+  proxy: process.env.TELEGRAM_PROXY || process.env.ALL_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '',
   parseMode: process.env.TELEGRAM_PARSE_MODE || '',
   disableWebPagePreview: process.env.TELEGRAM_DISABLE_WEB_PREVIEW || 'true',
   disableNotification: process.env.TELEGRAM_DISABLE_NOTIFICATION || 'false',
@@ -31,6 +32,7 @@ Options:
   --bot-token=123456:ABCDEF
   --chat-id=123456789
   --api-base-url=https://api.telegram.org
+  --proxy=127.0.0.1:10808
   --parse-mode=HTML
   --disable-web-preview=true
   --disable-notification=false
@@ -44,6 +46,7 @@ Options:
 
 Examples:
   node examples/TelegramNotify.js --bot-token=xxx --chat-id=123456 --message="Price hit target"
+  node examples/TelegramNotify.js --proxy=127.0.0.1:10808 --message="Send via local proxy"
   node examples/TelegramNotify.js --message="Dry message" --data='{"foo":"bar"}'
 `);
 }
@@ -99,6 +102,7 @@ function parseArgs(argv) {
     if (key === 'bot-token') options.botToken = value;
     else if (key === 'chat-id') options.chatId = value;
     else if (key === 'api-base-url') options.apiBaseUrl = value;
+    else if (key === 'proxy') options.proxy = value;
     else if (key === 'parse-mode') options.parseMode = value;
     else if (key === 'disable-web-preview') options.disableWebPagePreview = parseBoolean(value, 'disable-web-preview');
     else if (key === 'disable-notification') options.disableNotification = parseBoolean(value, 'disable-notification');
@@ -138,6 +142,7 @@ async function main() {
     botToken: parsedOptions.botToken,
     chatId: parsedOptions.chatId,
     apiBaseUrl: parsedOptions.apiBaseUrl,
+    proxy: parsedOptions.proxy,
     parseMode: parsedOptions.parseMode,
     disableWebPagePreview: parsedOptions.disableWebPagePreview,
     disableNotification: parsedOptions.disableNotification,

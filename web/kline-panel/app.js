@@ -209,6 +209,11 @@ function applyFormValues(form, values) {
     const field = form.elements.namedItem(key);
     if (!field) return;
 
+    if (field.type === 'checkbox') {
+      field.checked = Boolean(value);
+      return;
+    }
+
     field.value = value === null || value === undefined ? '' : String(value);
   });
 }
@@ -261,6 +266,26 @@ function serializeRealtimeForm() {
     outputDir: form.outputDir.value.trim(),
     connectTimeoutMs: Number(form.connectTimeoutMs.value),
     exitAfterMs: Number(form.exitAfterMs.value || 0),
+    enableSnapshotCsv: form.enableSnapshotCsv.checked,
+    enableSignalBroadcast: form.enableSignalBroadcast.checked,
+    signalOutputMode: form.signalOutputMode.value,
+    signalStrategyName: form.signalStrategyName.value,
+    signalCsvOutputDir: form.signalCsvOutputDir.value.trim(),
+    notificationTitle: form.notificationTitle.value.trim(),
+    notificationLevel: form.notificationLevel.value.trim(),
+    notificationSource: form.notificationSource.value.trim(),
+    telegramEnabled: form.telegramEnabled.checked,
+    telegramBotToken: form.telegramBotToken.value.trim(),
+    telegramChatId: form.telegramChatId.value.trim(),
+    telegramApiBaseUrl: form.telegramApiBaseUrl.value.trim(),
+    telegramParseMode: form.telegramParseMode.value.trim(),
+    telegramDisableWebPagePreview: form.telegramDisableWebPagePreview.checked,
+    telegramDisableNotification: form.telegramDisableNotification.checked,
+    telegramTimeoutMs: Number(form.telegramTimeoutMs.value || 15000),
+    feishuEnabled: form.feishuEnabled.checked,
+    feishuWebhookUrl: form.feishuWebhookUrl.value.trim(),
+    feishuSecret: form.feishuSecret.value.trim(),
+    feishuTimeoutMs: Number(form.feishuTimeoutMs.value || 15000),
   };
 }
 
@@ -830,6 +855,7 @@ function renderListeners() {
     const periods = fragment.querySelector('.listener-periods');
     const updated = fragment.querySelector('.listener-updated');
     const candle = fragment.querySelector('.listener-candle-body');
+    const signal = fragment.querySelector('.listener-signal-body');
     const error = fragment.querySelector('.listener-error');
 
     card.dataset.listenerId = listener.id;
@@ -847,7 +873,13 @@ function renderListeners() {
         ? 'is-pending'
         : ''}`.trim();
 
-    output.textContent = listener.outputPath || '等待中';
+    const outputParts = [];
+    if (listener.outputPath) outputParts.push(`快照: ${listener.outputPath}`);
+    if (listener.signalOutputPath) outputParts.push(`信号: ${listener.signalOutputPath}`);
+    if (listener.signalBroadcastEnabled && listener.signalOutputMode) {
+      outputParts.push(`广播: ${listener.signalOutputMode}`);
+    }
+    output.textContent = outputParts.join('\n') || '等待中';
     server.textContent = listener.proxy
       ? `${SERVER_LABELS[listener.server] || listener.server || '自动轮询'} | ${listener.proxy}`
       : SERVER_LABELS[listener.server] || listener.server || '等待中';
@@ -867,6 +899,28 @@ function renderListeners() {
       ].join('\n');
     } else {
       candle.textContent = '等待数据中...';
+    }
+
+    if (listener.lastTriggeredSignal) {
+      const latestTriggered = listener.lastTriggeredSignal;
+      signal.textContent = [
+        `time=${latestTriggered.datetimeUtc || latestTriggered.time || 'N/A'}`,
+        `side=${latestTriggered.side || ''}`,
+        `code=${latestTriggered.code || ''}`,
+        `reason=${latestTriggered.reason || ''}`,
+        `outputs=${listener.signalOutputMode || 'none'}`,
+      ].filter(Boolean).join('\n');
+    } else if (listener.latestSignal) {
+      const latestSignal = listener.latestSignal;
+      signal.textContent = [
+        `latest=${latestSignal.code || latestSignal.name || 'no-signal'}`,
+        `side=${latestSignal.side || ''}`,
+        `triggered=${latestSignal.triggered ? 'yes' : 'no'}`,
+      ].join('\n');
+    } else {
+      signal.textContent = listener.signalBroadcastEnabled
+        ? '策略信号等待中...'
+        : '未启用信号广播';
     }
 
     const isActive = listener.status === 'running' || listener.status === 'starting'
@@ -1014,6 +1068,7 @@ function handleEvent(event) {
   if (
     (event.type === 'listener-started'
       || event.type === 'listener-update'
+      || event.type === 'listener-signal'
       || event.type === 'listener-stopped'
       || event.type === 'listener-error'
       || event.type === 'listener-queued')

@@ -44,12 +44,13 @@ describe('notification service', () => {
   it('builds telegram requests without sending network traffic', () => {
     const request = buildTelegramRequest(
       { title: 'Ping', content: 'Hello' },
-      { botToken: 'abc', chatId: '123' },
+      { botToken: 'abc', chatId: '123', proxy: 'socks5://127.0.0.1:10808' },
     );
 
     expect(request.url).toContain('/botabc/sendMessage');
     expect(request.payload.chat_id).toBe('123');
     expect(request.payload.text).toContain('Hello');
+    expect(request.config.proxy).toBe('socks5://127.0.0.1:10808');
   });
 
   it('builds feishu requests with optional signing', () => {

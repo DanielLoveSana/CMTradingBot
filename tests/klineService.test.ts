@@ -94,4 +94,33 @@ describe('klineService', () => {
       volume: 123.45,
     });
   });
+
+  it('normalizes realtime signal broadcast options', () => {
+    const options = normalizeRealtimeOptions({
+      enableSnapshotCsv: 'false',
+      enableSignalBroadcast: 'true',
+      signalOutputMode: 'telegram+csv',
+      signalCsvOutputDir: 'data/realtime-signals-custom',
+      telegramEnabled: 'true',
+      telegramBotToken: 'abc',
+      telegramChatId: '123',
+      telegramProxy: 'socks5://127.0.0.1:10808',
+      telegramTimeoutMs: '12000',
+    });
+
+    expect(options.enableSnapshotCsv).toBe(false);
+    expect(options.enableSignalBroadcast).toBe(true);
+    expect(options.signalOutputMode).toBe('telegram+csv');
+    expect(options.signalOutputTargets).toEqual({
+      csv: true,
+      telegram: true,
+      feishu: false,
+    });
+    expect(options.signalCsvOutputDir).toBe(
+      path.resolve(process.cwd(), 'data/realtime-signals-custom'),
+    );
+    expect(options.telegramEnabled).toBe(true);
+    expect(options.telegramProxy).toBe('socks5://127.0.0.1:10808');
+    expect(options.telegramTimeoutMs).toBe(12000);
+  });
 });

@@ -4,6 +4,7 @@ const {
   createConsoleLogHooks,
   startRealtimeListener,
   SUPPORTED_PROXY_PROTOCOLS,
+  SUPPORTED_SIGNAL_OUTPUT_MODES,
   SUPPORTED_SERVERS,
 } = require('../src/klineService');
 const { formatErrorMessage } = require('../src/utils');
@@ -19,6 +20,27 @@ const DEFAULTS = {
   outputDir: path.join(__dirname, '..', 'data', 'realtime'),
   connectTimeoutMs: 15000,
   exitAfterMs: 0,
+  enableSnapshotCsv: true,
+  enableSignalBroadcast: false,
+  signalOutputMode: 'none',
+  signalStrategyName: 'demo_bollinger_bands_adx',
+  signalCsvOutputDir: path.join(__dirname, '..', 'data', 'realtime-signals'),
+  notificationTitle: process.env.NOTIFICATION_TITLE || 'TradingView Strategy Signal',
+  notificationLevel: process.env.NOTIFICATION_LEVEL || 'warn',
+  notificationSource: process.env.NOTIFICATION_SOURCE || 'CMTradingBot',
+  telegramEnabled: process.env.TELEGRAM_ENABLED || 'false',
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
+  telegramApiBaseUrl: process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org',
+  telegramProxy: process.env.TELEGRAM_PROXY || process.env.ALL_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '',
+  telegramParseMode: process.env.TELEGRAM_PARSE_MODE || '',
+  telegramDisableWebPagePreview: process.env.TELEGRAM_DISABLE_WEB_PREVIEW || 'true',
+  telegramDisableNotification: process.env.TELEGRAM_DISABLE_NOTIFICATION || 'false',
+  telegramTimeoutMs: 15000,
+  feishuEnabled: process.env.FEISHU_ENABLED || 'false',
+  feishuWebhookUrl: process.env.FEISHU_WEBHOOK_URL || '',
+  feishuSecret: process.env.FEISHU_SECRET || '',
+  feishuTimeoutMs: 15000,
 };
 
 function printHelp() {
@@ -41,6 +63,27 @@ Options:
   --output-dir=./data/realtime
   --connect-timeout-ms=15000
   --exit-after-ms=0
+  --enable-snapshot-csv=true
+  --enable-signal-broadcast=true
+  --signal-output-mode=telegram+csv
+  --signal-strategy-name=demo_bollinger_bands_adx
+  --signal-csv-output-dir=./data/realtime-signals
+  --notification-title="TradingView Strategy Signal"
+  --notification-level=warn
+  --notification-source=CMTradingBot
+  --telegram-enabled=true
+  --telegram-bot-token=123456:ABCDEF
+  --telegram-chat-id=123456789
+  --telegram-api-base-url=https://api.telegram.org
+  --telegram-proxy=127.0.0.1:10808
+  --telegram-parse-mode=HTML
+  --telegram-disable-web-preview=true
+  --telegram-disable-notification=false
+  --telegram-timeout-ms=15000
+  --feishu-enabled=true
+  --feishu-webhook-url=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+  --feishu-secret=xxxx
+  --feishu-timeout-ms=15000
   --help
 
 Examples:
@@ -49,7 +92,17 @@ Examples:
   node examples/ListenRealtimeKline.js --symbol=Apple --search-type=stock
   node examples/ListenRealtimeKline.js --symbol=BINANCE:BTCUSDT --proxy-protocol=socks5
   node examples/ListenRealtimeKline.js --symbol=BINANCE:ETHUSDT --timeframe=1 --range=500
+  node --env-file=.env examples/ListenRealtimeKline.js --symbol=BINANCE:BTCUSDT --enable-signal-broadcast=true --signal-output-mode=telegram
 `);
+}
+
+function parseBoolean(value, name) {
+  const text = String(value).trim().toLowerCase();
+
+  if (['true', '1', 'yes', 'y', 'on'].includes(text)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(text)) return false;
+
+  throw new Error(`Invalid ${name}: ${value}`);
 }
 
 function parseInteger(value, name) {
@@ -90,6 +143,27 @@ function parseArgs(argv) {
     else if (key === 'output-dir') options.outputDir = path.resolve(process.cwd(), value);
     else if (key === 'connect-timeout-ms') options.connectTimeoutMs = parseInteger(value, 'connect-timeout-ms');
     else if (key === 'exit-after-ms') options.exitAfterMs = parseInteger(value, 'exit-after-ms');
+    else if (key === 'enable-snapshot-csv') options.enableSnapshotCsv = parseBoolean(value, 'enable-snapshot-csv');
+    else if (key === 'enable-signal-broadcast') options.enableSignalBroadcast = parseBoolean(value, 'enable-signal-broadcast');
+    else if (key === 'signal-output-mode') options.signalOutputMode = value;
+    else if (key === 'signal-strategy-name') options.signalStrategyName = value;
+    else if (key === 'signal-csv-output-dir') options.signalCsvOutputDir = path.resolve(process.cwd(), value);
+    else if (key === 'notification-title') options.notificationTitle = value;
+    else if (key === 'notification-level') options.notificationLevel = value;
+    else if (key === 'notification-source') options.notificationSource = value;
+    else if (key === 'telegram-enabled') options.telegramEnabled = parseBoolean(value, 'telegram-enabled');
+    else if (key === 'telegram-bot-token') options.telegramBotToken = value;
+    else if (key === 'telegram-chat-id') options.telegramChatId = value;
+    else if (key === 'telegram-api-base-url') options.telegramApiBaseUrl = value;
+    else if (key === 'telegram-proxy') options.telegramProxy = value;
+    else if (key === 'telegram-parse-mode') options.telegramParseMode = value;
+    else if (key === 'telegram-disable-web-preview') options.telegramDisableWebPagePreview = parseBoolean(value, 'telegram-disable-web-preview');
+    else if (key === 'telegram-disable-notification') options.telegramDisableNotification = parseBoolean(value, 'telegram-disable-notification');
+    else if (key === 'telegram-timeout-ms') options.telegramTimeoutMs = parseInteger(value, 'telegram-timeout-ms');
+    else if (key === 'feishu-enabled') options.feishuEnabled = parseBoolean(value, 'feishu-enabled');
+    else if (key === 'feishu-webhook-url') options.feishuWebhookUrl = value;
+    else if (key === 'feishu-secret') options.feishuSecret = value;
+    else if (key === 'feishu-timeout-ms') options.feishuTimeoutMs = parseInteger(value, 'feishu-timeout-ms');
     else throw new Error(`Unknown option: --${key}`);
   });
 
@@ -115,6 +189,9 @@ function parseArgs(argv) {
   }
   if (!SUPPORTED_PROXY_PROTOCOLS.includes(options.proxyProtocol)) {
     throw new Error(`proxy-protocol must be one of: ${SUPPORTED_PROXY_PROTOCOLS.join(', ')}`);
+  }
+  if (!SUPPORTED_SIGNAL_OUTPUT_MODES.includes(String(options.signalOutputMode))) {
+    throw new Error(`signal-output-mode must be one of: ${SUPPORTED_SIGNAL_OUTPUT_MODES.join(', ')}`);
   }
 
   return options;

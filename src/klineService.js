@@ -12,6 +12,19 @@ const {
   previewCsv,
   writePeriodsCsv,
 } = require('./klineCsv');
+const {
+  appendStrategySignalCsv,
+  buildRealtimeStrategySignalOutputPath,
+  buildStrategySignalContext,
+  createDemoBollingerAdxStrategy,
+  normalizeDemoBollingerAdxOptions,
+} = require('./klineStrategySignals');
+const {
+  normalizeFeishuConfig,
+  normalizeTelegramConfig,
+  sendFeishuNotification,
+  sendTelegramNotification,
+} = require('./notificationService');
 const { formatErrorMessage, genSessionID } = require('./utils');
 
 const SUPPORTED_SEARCH_TYPES = Object.freeze([
@@ -57,7 +70,41 @@ const DEFAULT_REALTIME_OPTIONS = Object.freeze({
   outputDir: path.join(__dirname, '..', 'data', 'realtime'),
   connectTimeoutMs: 15000,
   exitAfterMs: 0,
+  enableSnapshotCsv: true,
+  enableSignalBroadcast: false,
+  signalOutputMode: 'none',
+  signalStrategyName: 'demo_bollinger_bands_adx',
+  signalCsvOutputDir: path.join(__dirname, '..', 'data', 'realtime-signals'),
+  notificationTitle: 'TradingView Strategy Signal',
+  notificationLevel: 'warn',
+  notificationSource: 'CMTradingBot',
+  telegramEnabled: false,
+  telegramBotToken: '',
+  telegramChatId: '',
+  telegramApiBaseUrl: 'https://api.telegram.org',
+  telegramProxy: '',
+  telegramParseMode: '',
+  telegramDisableWebPagePreview: true,
+  telegramDisableNotification: false,
+  telegramTimeoutMs: 15000,
+  feishuEnabled: false,
+  feishuWebhookUrl: '',
+  feishuSecret: '',
+  feishuTimeoutMs: 15000,
 });
+
+const SUPPORTED_SIGNAL_OUTPUT_MODES = Object.freeze([
+  'none',
+  'csv',
+  'telegram',
+  'feishu',
+  'telegram+csv',
+  'feishu+csv',
+  'telegram+feishu',
+  'telegram+feishu+csv',
+]);
+
+const DEMO_BOLLINGER_ADX_STRATEGY = createDemoBollingerAdxStrategy();
 
 function createConsoleLogHooks() {
   return {
@@ -111,6 +158,17 @@ function parseInteger(value, name) {
   return parsed;
 }
 
+function normalizeBoolean(value, fallback = false) {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+
+  const text = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'y', 'on'].includes(text)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(text)) return false;
+
+  return fallback;
+}
+
 function parseToTimestamp(value) {
   if (value === null || value === undefined || value === '') return null;
 
@@ -140,6 +198,207 @@ function resolveOutputDir(value, fallback) {
   if (!target) return fallback;
   if (path.isAbsolute(target)) return target;
   return path.resolve(process.cwd(), target);
+}
+
+function normalizeSignalOutputMode(value) {
+  const mode = normalizeString(value, DEFAULT_REALTIME_OPTIONS.signalOutputMode).toLowerCase();
+  if (!SUPPORTED_SIGNAL_OUTPUT_MODES.includes(mode)) {
+    throw new Error(
+      `signal-output-mode must be one of: ${SUPPORTED_SIGNAL_OUTPUT_MODES.join(', ')}`,
+    );
+  }
+
+  return mode;
+}
+
+function parseSignalOutputTargets(mode) {
+  const normalizedMode = normalizeSignalOutputMode(mode);
+  if (normalizedMode === 'none') {
+    return {
+      csv: false,
+      telegram: false,
+      feishu: false,
+    };
+  }
+
+  const parts = normalizedMode.split('+');
+  return {
+    csv: parts.includes('csv'),
+    telegram: parts.includes('telegram'),
+    feishu: parts.includes('feishu'),
+  };
+}
+
+function normalizeRealtimeNotificationConfig(raw = {}) {
+  return {
+    notificationTitle: normalizeString(
+      raw.notificationTitle,
+      DEFAULT_REALTIME_OPTIONS.notificationTitle,
+    ),
+    notificationLevel: normalizeString(
+      raw.notificationLevel,
+      DEFAULT_REALTIME_OPTIONS.notificationLevel,
+    ).toLowerCase(),
+    notificationSource: normalizeString(
+      raw.notificationSource,
+      DEFAULT_REALTIME_OPTIONS.notificationSource,
+    ),
+    telegramEnabled: normalizeBoolean(
+      raw.telegramEnabled,
+      DEFAULT_REALTIME_OPTIONS.telegramEnabled,
+    ),
+    telegramBotToken: normalizeString(
+      raw.telegramBotToken,
+      DEFAULT_REALTIME_OPTIONS.telegramBotToken,
+    ),
+    telegramChatId: normalizeString(
+      raw.telegramChatId,
+      DEFAULT_REALTIME_OPTIONS.telegramChatId,
+    ),
+    telegramApiBaseUrl: normalizeString(
+      raw.telegramApiBaseUrl,
+      DEFAULT_REALTIME_OPTIONS.telegramApiBaseUrl,
+    ),
+    telegramProxy: normalizeString(
+      raw.telegramProxy,
+      DEFAULT_REALTIME_OPTIONS.telegramProxy,
+    ),
+    telegramParseMode: normalizeString(
+      raw.telegramParseMode,
+      DEFAULT_REALTIME_OPTIONS.telegramParseMode,
+    ),
+    telegramDisableWebPagePreview: normalizeBoolean(
+      raw.telegramDisableWebPagePreview,
+      DEFAULT_REALTIME_OPTIONS.telegramDisableWebPagePreview,
+    ),
+    telegramDisableNotification: normalizeBoolean(
+      raw.telegramDisableNotification,
+      DEFAULT_REALTIME_OPTIONS.telegramDisableNotification,
+    ),
+    telegramTimeoutMs: parseInteger(
+      raw.telegramTimeoutMs ?? DEFAULT_REALTIME_OPTIONS.telegramTimeoutMs,
+      'telegram-timeout-ms',
+    ),
+    feishuEnabled: normalizeBoolean(
+      raw.feishuEnabled,
+      DEFAULT_REALTIME_OPTIONS.feishuEnabled,
+    ),
+    feishuWebhookUrl: normalizeString(
+      raw.feishuWebhookUrl,
+      DEFAULT_REALTIME_OPTIONS.feishuWebhookUrl,
+    ),
+    feishuSecret: normalizeString(
+      raw.feishuSecret,
+      DEFAULT_REALTIME_OPTIONS.feishuSecret,
+    ),
+    feishuTimeoutMs: parseInteger(
+      raw.feishuTimeoutMs ?? DEFAULT_REALTIME_OPTIONS.feishuTimeoutMs,
+      'feishu-timeout-ms',
+    ),
+  };
+}
+
+function buildRealtimeSignalMessage({ signal, latestPeriod, options, targets }) {
+  const title = options.notificationTitle || DEFAULT_REALTIME_OPTIONS.notificationTitle;
+  const symbol = options.symbol || '';
+  const timeframe = options.timeframe || '';
+  const triggerTime = latestPeriod?.datetimeUtc || formatDateTime(latestPeriod?.time);
+
+  return {
+    title,
+    level: options.notificationLevel || DEFAULT_REALTIME_OPTIONS.notificationLevel,
+    source: options.notificationSource || DEFAULT_REALTIME_OPTIONS.notificationSource,
+    timestamp: new Date().toISOString(),
+    content: [
+      `${symbol} ${timeframe}`,
+      signal.side ? `side=${signal.side}` : '',
+      signal.code ? `code=${signal.code}` : '',
+      signal.reason ? signal.reason : '',
+    ].filter(Boolean).join(' | '),
+    data: {
+      symbol,
+      timeframe,
+      triggeredAt: triggerTime,
+      signal,
+      candle: latestPeriod,
+      outputs: targets,
+    },
+  };
+}
+
+async function dispatchRealtimeSignalOutputs({
+  signal,
+  latestPeriod,
+  options,
+  csvPath,
+  targets,
+}) {
+  const tasks = [];
+  const results = [];
+  const message = buildRealtimeSignalMessage({
+    signal,
+    latestPeriod,
+    options,
+    targets,
+  });
+
+  if (targets.telegram) {
+    const telegramConfig = normalizeTelegramConfig({
+      botToken: options.telegramBotToken,
+      chatId: options.telegramChatId,
+      apiBaseUrl: options.telegramApiBaseUrl,
+      proxy: options.telegramProxy,
+      parseMode: options.telegramParseMode,
+      disableWebPagePreview: options.telegramDisableWebPagePreview,
+      disableNotification: options.telegramDisableNotification,
+      timeoutMs: options.telegramTimeoutMs,
+    });
+    tasks.push(
+      sendTelegramNotification(message, telegramConfig).then((result) => {
+        results.push(result);
+      }),
+    );
+  }
+
+  if (targets.feishu) {
+    const feishuConfig = normalizeFeishuConfig({
+      webhookUrl: options.feishuWebhookUrl,
+      secret: options.feishuSecret,
+      timeoutMs: options.feishuTimeoutMs,
+    });
+    tasks.push(
+      sendFeishuNotification(message, feishuConfig).then((result) => {
+        results.push(result);
+      }),
+    );
+  }
+
+  await Promise.all(tasks);
+
+  return {
+    results,
+    csvPath,
+    message,
+  };
+}
+
+function buildRealtimeSignalSummary(signal) {
+  return [
+    signal.name || 'strategy',
+    signal.side || 'neutral',
+    signal.code || 'NO_CODE',
+    signal.reason || '',
+  ].filter(Boolean).join(' | ');
+}
+
+function sanitizeRealtimeOptionsForState(options = {}) {
+  return {
+    ...options,
+    telegramBotToken: options.telegramBotToken ? '***' : '',
+    telegramChatId: options.telegramChatId ? '***' : '',
+    feishuWebhookUrl: options.feishuWebhookUrl ? '***' : '',
+    feishuSecret: options.feishuSecret ? '***' : '',
+  };
 }
 
 function validateCommonOptions(options) {
@@ -205,6 +464,9 @@ function normalizeHistoricalOptions(input = {}) {
 
 function normalizeRealtimeOptions(input = {}) {
   const raw = { ...DEFAULT_REALTIME_OPTIONS, ...input };
+  const notificationConfig = normalizeRealtimeNotificationConfig(raw);
+  const signalOutputMode = normalizeSignalOutputMode(raw.signalOutputMode);
+  const outputTargets = parseSignalOutputTargets(signalOutputMode);
   const options = {
     symbol: normalizeString(raw.symbol, DEFAULT_REALTIME_OPTIONS.symbol),
     timeframe: normalizeString(raw.timeframe, DEFAULT_REALTIME_OPTIONS.timeframe),
@@ -219,6 +481,25 @@ function normalizeRealtimeOptions(input = {}) {
     outputDir: resolveOutputDir(raw.outputDir, DEFAULT_REALTIME_OPTIONS.outputDir),
     connectTimeoutMs: parseInteger(raw.connectTimeoutMs, 'connect-timeout-ms'),
     exitAfterMs: parseInteger(raw.exitAfterMs, 'exit-after-ms'),
+    enableSnapshotCsv: normalizeBoolean(
+      raw.enableSnapshotCsv,
+      DEFAULT_REALTIME_OPTIONS.enableSnapshotCsv,
+    ),
+    enableSignalBroadcast: normalizeBoolean(
+      raw.enableSignalBroadcast,
+      DEFAULT_REALTIME_OPTIONS.enableSignalBroadcast,
+    ),
+    signalOutputMode,
+    signalStrategyName: normalizeString(
+      raw.signalStrategyName,
+      DEFAULT_REALTIME_OPTIONS.signalStrategyName,
+    ),
+    signalCsvOutputDir: resolveOutputDir(
+      raw.signalCsvOutputDir,
+      DEFAULT_REALTIME_OPTIONS.signalCsvOutputDir,
+    ),
+    signalOutputTargets: outputTargets,
+    ...notificationConfig,
   };
 
   validateCommonOptions(options);
@@ -232,6 +513,48 @@ function normalizeRealtimeOptions(input = {}) {
 
   if (!Number.isInteger(options.exitAfterMs) || options.exitAfterMs < 0) {
     throw new Error('exit-after-ms must be a non-negative integer');
+  }
+
+  if (options.signalStrategyName !== 'demo_bollinger_bands_adx') {
+    throw new Error('Only demo_bollinger_bands_adx is currently supported for realtime signals');
+  }
+
+  if (!options.enableSignalBroadcast) {
+    options.signalOutputMode = 'none';
+    options.signalOutputTargets = {
+      csv: false,
+      telegram: false,
+      feishu: false,
+    };
+  }
+
+  if (options.enableSignalBroadcast && options.signalOutputTargets.telegram) {
+    if (!options.telegramEnabled) {
+      throw new Error('telegramEnabled must be true when signal-output-mode includes telegram');
+    }
+
+    normalizeTelegramConfig({
+      botToken: options.telegramBotToken,
+      chatId: options.telegramChatId,
+      apiBaseUrl: options.telegramApiBaseUrl,
+      proxy: options.telegramProxy,
+      parseMode: options.telegramParseMode,
+      disableWebPagePreview: options.telegramDisableWebPagePreview,
+      disableNotification: options.telegramDisableNotification,
+      timeoutMs: options.telegramTimeoutMs,
+    });
+  }
+
+  if (options.enableSignalBroadcast && options.signalOutputTargets.feishu) {
+    if (!options.feishuEnabled) {
+      throw new Error('feishuEnabled must be true when signal-output-mode includes feishu');
+    }
+
+    normalizeFeishuConfig({
+      webhookUrl: options.feishuWebhookUrl,
+      secret: options.feishuSecret,
+      timeoutMs: options.feishuTimeoutMs,
+    });
   }
 
   return options;
@@ -617,6 +940,7 @@ function buildListenerState(state) {
     server: state.server,
     proxy: state.proxy,
     outputPath: state.outputPath,
+    signalOutputPath: state.signalOutputPath,
     connected: state.connected,
     symbolLoaded: state.symbolLoaded,
     initialized: state.initialized,
@@ -626,6 +950,11 @@ function buildListenerState(state) {
     error: state.error,
     periodCount: state.periodCount,
     latestPeriod: state.latestPeriod,
+    latestSignal: state.latestSignal,
+    lastTriggeredSignal: state.lastTriggeredSignal,
+    signalBroadcastEnabled: state.signalBroadcastEnabled,
+    signalOutputMode: state.signalOutputMode,
+    signalTargets: state.signalTargets,
     symbolInfo: state.symbolInfo,
     options: state.options,
     lastEventAt: state.lastEventAt,
@@ -637,12 +966,23 @@ async function connectRealtimeListenerOnce(options, server, proxy, hooks = {}) {
     const client = new Client({ server, proxy });
     const chart = new client.Session.Chart();
     const outputPath = buildRealtimeOutputPath(options);
+    const signalOutputPath = options.enableSignalBroadcast && options.signalOutputTargets.csv
+      ? buildRealtimeStrategySignalOutputPath({
+          outputDir: options.signalCsvOutputDir,
+          symbol: options.symbol,
+          timeframe: options.timeframe,
+          strategyName: options.signalStrategyName,
+        })
+      : '';
+    const strategy = DEMO_BOLLINGER_ADX_STRATEGY;
+    const strategyOptions = normalizeDemoBollingerAdxOptions(options);
 
     let cleanedUp = false;
     let finalized = false;
     let readySettled = false;
     let lastPeriodTime = null;
     let lastSignature = '';
+    let lastTriggeredSignalKey = '';
     let connectTimeout = null;
     let exitTimer = null;
 
@@ -662,6 +1002,7 @@ async function connectRealtimeListenerOnce(options, server, proxy, hooks = {}) {
       server,
       proxy,
       outputPath,
+      signalOutputPath,
       connected: false,
       symbolLoaded: false,
       initialized: false,
@@ -671,9 +1012,14 @@ async function connectRealtimeListenerOnce(options, server, proxy, hooks = {}) {
       error: null,
       periodCount: 0,
       latestPeriod: null,
+      latestSignal: null,
+      lastTriggeredSignal: null,
+      signalBroadcastEnabled: options.enableSignalBroadcast,
+      signalOutputMode: options.signalOutputMode,
+      signalTargets: options.signalOutputTargets,
       symbolInfo: null,
       options: {
-        ...options,
+        ...sanitizeRealtimeOptionsForState(options),
         resolution: options.resolution,
       },
       lastEventAt: new Date().toISOString(),
@@ -752,6 +1098,7 @@ async function connectRealtimeListenerOnce(options, server, proxy, hooks = {}) {
     const controller = {
       id: state.id,
       outputPath,
+      signalOutputPath,
       getState,
       whenStopped,
       async stop(reason = 'Listener stopped') {
@@ -816,92 +1163,202 @@ async function connectRealtimeListenerOnce(options, server, proxy, hooks = {}) {
     });
 
     chart.onUpdate(() => {
-      const latest = chart.periods[0];
-      if (!latest || finalized) return;
+      (async () => {
+        const latest = chart.periods[0];
+        if (!latest || finalized) return;
 
-      const signature = buildPeriodSignature(latest);
-      if (signature === lastSignature && state.initialized) return;
+        const signature = buildPeriodSignature(latest);
+        if (signature === lastSignature && state.initialized) return;
 
-      try {
-        writePeriodsCsv({
-          periods: chart.periods,
-          outputPath,
-          order: 'asc',
-        });
-      } catch (error) {
-        finalize('error', {
-          errorMessage: `[${server}] Realtime snapshot write failed: ${formatErrorMessage(error)}`,
-        }).catch(() => {});
-        return;
-      }
+        if (options.enableSnapshotCsv) {
+          try {
+            writePeriodsCsv({
+              periods: chart.periods,
+              outputPath,
+              order: 'asc',
+            });
+          } catch (error) {
+            finalize('error', {
+              errorMessage: `[${server}] Realtime snapshot write failed: ${formatErrorMessage(error)}`,
+            }).catch(() => {});
+            return;
+          }
+        }
 
-      clearTimeout(connectTimeout);
+        clearTimeout(connectTimeout);
 
-      state.periodCount = chart.periods.length;
-      state.latestPeriod = serializePeriod(latest);
-      state.symbolInfo = cloneSymbolInfo(chart.infos);
-      state.lastEventAt = new Date().toISOString();
+        state.periodCount = chart.periods.length;
+        state.latestPeriod = serializePeriod(latest);
+        state.symbolInfo = cloneSymbolInfo(chart.infos);
+        state.lastEventAt = new Date().toISOString();
+        state.latestSignal = null;
 
-      if (!state.initialized) {
-        state.initialized = true;
-        state.status = 'running';
+        let signalContext = null;
+        let latestSignal = null;
+
+        if (options.enableSignalBroadcast) {
+          try {
+            signalContext = buildStrategySignalContext(chart.periods, strategy, strategyOptions);
+            latestSignal = signalContext.signals.get(latest.time) || null;
+            state.latestSignal = latestSignal;
+          } catch (error) {
+            finalize('error', {
+              errorMessage: `[${server}] Strategy signal evaluation failed: ${formatErrorMessage(error)}`,
+            }).catch(() => {});
+            return;
+          }
+        }
+
+        if (!state.initialized) {
+          state.initialized = true;
+          state.status = 'running';
+          lastPeriodTime = latest.time;
+          lastSignature = signature;
+
+          if (options.exitAfterMs > 0) {
+            exitTimer = setTimeout(() => {
+              controller.stop(`Exit after ${options.exitAfterMs}ms`).catch(() => {});
+            }, options.exitAfterMs);
+          }
+
+          const snapshot = publishState();
+
+          emitLog(
+            hooks,
+            'info',
+            `[${server}] Initial snapshot loaded (${chart.periods.length} candles)`,
+            { listenerId: state.id },
+          );
+          if (options.enableSnapshotCsv) {
+            emitLog(hooks, 'info', `[${server}] Output file: ${outputPath}`, {
+              listenerId: state.id,
+            });
+          }
+          if (signalOutputPath) {
+            emitLog(hooks, 'info', `[${server}] Signal CSV file: ${signalOutputPath}`, {
+              listenerId: state.id,
+            });
+          }
+          emitLog(hooks, 'info', `[${server}] Latest candle: ${formatPeriod(latest)}`, {
+            listenerId: state.id,
+          });
+        if (latestSignal) {
+          emitLog(
+            hooks,
+            'info',
+            `[${server}] Latest signal: ${buildRealtimeSignalSummary(latestSignal)}`,
+            { listenerId: state.id },
+          );
+          if (latestSignal.triggered) {
+            lastTriggeredSignalKey = [
+              latest.time,
+              latestSignal.name || '',
+              latestSignal.side || '',
+              latestSignal.code || '',
+              latestSignal.reason || '',
+            ].join('|');
+          }
+        }
+
+          emitEvent(hooks, 'listener-started', {
+            listener: snapshot,
+          });
+
+          if (!readySettled) {
+            readySettled = true;
+            resolve(controller);
+          }
+
+          return;
+        }
+
+        const updateKind = latest.time !== lastPeriodTime
+          ? 'new-candle'
+          : 'candle-update';
+
+        if (updateKind === 'new-candle') {
+          emitLog(hooks, 'info', `[${server}] New candle opened: ${formatPeriod(latest)}`, {
+            listenerId: state.id,
+          });
+        } else {
+          emitLog(hooks, 'info', `[${server}] Candle updated: ${formatPeriod(latest)}`, {
+            listenerId: state.id,
+          });
+        }
+
         lastPeriodTime = latest.time;
         lastSignature = signature;
 
-        if (options.exitAfterMs > 0) {
-          exitTimer = setTimeout(() => {
-            controller.stop(`Exit after ${options.exitAfterMs}ms`).catch(() => {});
-          }, options.exitAfterMs);
+        let snapshot = publishState();
+
+        if (options.enableSignalBroadcast && latestSignal && latestSignal.triggered) {
+          const signalKey = [
+            latest.time,
+            latestSignal.name || '',
+            latestSignal.side || '',
+            latestSignal.code || '',
+            latestSignal.reason || '',
+          ].join('|');
+
+          if (signalKey !== lastTriggeredSignalKey) {
+            try {
+              if (options.signalOutputTargets.csv) {
+                appendStrategySignalCsv({
+                  period: latest,
+                  outputPath: signalOutputPath,
+                  strategy,
+                  context: signalContext,
+                });
+              }
+
+              const dispatchResult = await dispatchRealtimeSignalOutputs({
+                signal: latestSignal,
+                latestPeriod: state.latestPeriod,
+                options,
+                csvPath: signalOutputPath,
+                targets: options.signalOutputTargets,
+              });
+
+              lastTriggeredSignalKey = signalKey;
+              state.lastTriggeredSignal = {
+                ...latestSignal,
+                time: latest.time,
+                datetimeUtc: state.latestPeriod.datetimeUtc,
+                outputs: options.signalOutputTargets,
+                dispatchedAt: new Date().toISOString(),
+                csvPath: options.signalOutputTargets.csv ? signalOutputPath : '',
+                deliveries: dispatchResult.results.map((result) => result.provider),
+              };
+
+              emitLog(
+                hooks,
+                'warn',
+                `[${server}] Signal triggered: ${buildRealtimeSignalSummary(latestSignal)}`,
+                { listenerId: state.id },
+              );
+
+              snapshot = publishState();
+              emitEvent(hooks, 'listener-signal', {
+                listener: snapshot,
+                signal: state.lastTriggeredSignal,
+              });
+            } catch (error) {
+              finalize('error', {
+                errorMessage: `[${server}] Signal dispatch failed: ${formatErrorMessage(error)}`,
+              }).catch(() => {});
+              return;
+            }
+          }
         }
 
-        const snapshot = publishState();
-
-        emitLog(
-          hooks,
-          'info',
-          `[${server}] Initial snapshot loaded (${chart.periods.length} candles)`,
-          { listenerId: state.id },
-        );
-        emitLog(hooks, 'info', `[${server}] Output file: ${outputPath}`, {
-          listenerId: state.id,
-        });
-        emitLog(hooks, 'info', `[${server}] Latest candle: ${formatPeriod(latest)}`, {
-          listenerId: state.id,
-        });
-
-        emitEvent(hooks, 'listener-started', {
+        emitEvent(hooks, 'listener-update', {
           listener: snapshot,
+          updateKind,
         });
-
-        if (!readySettled) {
-          readySettled = true;
-          resolve(controller);
-        }
-
-        return;
-      }
-
-      const updateKind = latest.time !== lastPeriodTime
-        ? 'new-candle'
-        : 'candle-update';
-
-      if (updateKind === 'new-candle') {
-        emitLog(hooks, 'info', `[${server}] New candle opened: ${formatPeriod(latest)}`, {
-          listenerId: state.id,
-        });
-      } else {
-        emitLog(hooks, 'info', `[${server}] Candle updated: ${formatPeriod(latest)}`, {
-          listenerId: state.id,
-        });
-      }
-
-      lastPeriodTime = latest.time;
-      lastSignature = signature;
-
-      const snapshot = publishState();
-      emitEvent(hooks, 'listener-update', {
-        listener: snapshot,
-        updateKind,
+      })().catch((error) => {
+        finalize('error', {
+          errorMessage: `[${server}] Realtime listener update failed: ${formatErrorMessage(error)}`,
+        }).catch(() => {});
       });
     });
 
@@ -968,6 +1425,7 @@ module.exports = {
   DEFAULT_REALTIME_OPTIONS,
   SUPPORTED_PROXY_PROTOCOLS,
   SUPPORTED_SEARCH_TYPES,
+  SUPPORTED_SIGNAL_OUTPUT_MODES,
   SUPPORTED_SERVERS,
   buildListenerState,
   buildPeriodSignature,
@@ -980,6 +1438,7 @@ module.exports = {
   parseInteger,
   parseToTimestamp,
   resolveInputSymbol,
+  sanitizeRealtimeOptionsForState,
   serializePeriod,
   startRealtimeListener,
 };

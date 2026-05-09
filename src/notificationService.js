@@ -1,6 +1,7 @@
 const axios = require('axios');
 const crypto = require('crypto');
 
+const { getAxiosProxyConfig } = require('./proxy');
 const { formatErrorMessage } = require('./utils');
 
 const DEFAULT_NOTIFICATION_MESSAGE = Object.freeze({
@@ -16,6 +17,7 @@ const DEFAULT_TELEGRAM_CONFIG = Object.freeze({
   botToken: '',
   chatId: '',
   apiBaseUrl: 'https://api.telegram.org',
+  proxy: '',
   parseMode: '',
   disableWebPagePreview: true,
   disableNotification: false,
@@ -148,6 +150,7 @@ function normalizeTelegramConfig(input = {}) {
     botToken: normalizeString(raw.botToken, DEFAULT_TELEGRAM_CONFIG.botToken),
     chatId: normalizeString(raw.chatId, DEFAULT_TELEGRAM_CONFIG.chatId),
     apiBaseUrl: normalizeString(raw.apiBaseUrl, DEFAULT_TELEGRAM_CONFIG.apiBaseUrl).replace(/\/+$/, ''),
+    proxy: normalizeString(raw.proxy, DEFAULT_TELEGRAM_CONFIG.proxy),
     parseMode: normalizeString(raw.parseMode, DEFAULT_TELEGRAM_CONFIG.parseMode),
     disableWebPagePreview: normalizeBoolean(
       raw.disableWebPagePreview,
@@ -259,6 +262,7 @@ async function sendTelegramNotification(messageInput, configInput = {}) {
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
       },
+      ...getAxiosProxyConfig(request.config.proxy),
     });
 
     const body = response.data || {};

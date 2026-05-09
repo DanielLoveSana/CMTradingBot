@@ -801,6 +801,119 @@
                     <span>自动停止（毫秒）</span>
                     <input name="exitAfterMs" type="number" min="0">
                   </label>
+                  <label>
+                    <span>输出快照 CSV</span>
+                    <input name="enableSnapshotCsv" type="checkbox" checked>
+                  </label>
+                </div>
+              </section>
+
+              <section class="form-section">
+                <div class="form-section-head">
+                  <div>
+                    <h4>信号广播</h4>
+                    <p>把监听升级为策略触发广播器，只在出现信号时输出 CSV 或推送消息。</p>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    <span>启用信号广播</span>
+                    <input name="enableSignalBroadcast" type="checkbox">
+                  </label>
+                  <label>
+                    <span>策略名称</span>
+                    <select name="signalStrategyName">
+                      <option value="demo_bollinger_bands_adx">demo_bollinger_bands_adx</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>输出方式</span>
+                    <select name="signalOutputMode">
+                      <option value="none">none</option>
+                      <option value="csv">csv</option>
+                      <option value="telegram">telegram</option>
+                      <option value="feishu">feishu</option>
+                      <option value="telegram+csv">telegram+csv</option>
+                      <option value="feishu+csv">feishu+csv</option>
+                      <option value="telegram+feishu">telegram+feishu</option>
+                      <option value="telegram+feishu+csv">telegram+feishu+csv</option>
+                    </select>
+                  </label>
+                  <label class="span-2">
+                    <span>信号 CSV 目录</span>
+                    <input name="signalCsvOutputDir" placeholder="data/realtime-signals">
+                  </label>
+                  <label>
+                    <span>通知标题</span>
+                    <input name="notificationTitle" placeholder="TradingView Strategy Signal">
+                  </label>
+                  <label>
+                    <span>通知级别</span>
+                    <input name="notificationLevel" placeholder="warn">
+                  </label>
+                  <label class="span-2">
+                    <span>通知来源</span>
+                    <input name="notificationSource" placeholder="CMTradingBot">
+                  </label>
+                </div>
+              </section>
+
+              <section class="form-section">
+                <div class="form-section-head">
+                  <div>
+                    <h4>Telegram / 飞书</h4>
+                    <p>只在输出方式包含对应目标时才会使用。</p>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    <span>启用 Telegram</span>
+                    <input name="telegramEnabled" type="checkbox">
+                  </label>
+                  <label>
+                    <span>Telegram Bot Token</span>
+                    <input name="telegramBotToken" placeholder="123456:ABCDEF">
+                  </label>
+                  <label>
+                    <span>Telegram Chat ID</span>
+                    <input name="telegramChatId" placeholder="123456789">
+                  </label>
+                  <label>
+                    <span>Telegram API Base URL</span>
+                    <input name="telegramApiBaseUrl" placeholder="https://api.telegram.org">
+                  </label>
+                  <label>
+                    <span>Telegram Parse Mode</span>
+                    <input name="telegramParseMode" placeholder="HTML">
+                  </label>
+                  <label>
+                    <span>Telegram 超时（毫秒）</span>
+                    <input name="telegramTimeoutMs" type="number" value="15000">
+                  </label>
+                  <label>
+                    <span>关闭网页预览</span>
+                    <input name="telegramDisableWebPagePreview" type="checkbox" checked>
+                  </label>
+                  <label>
+                    <span>静默通知</span>
+                    <input name="telegramDisableNotification" type="checkbox">
+                  </label>
+                  <label>
+                    <span>启用飞书</span>
+                    <input name="feishuEnabled" type="checkbox">
+                  </label>
+                  <label class="span-2">
+                    <span>飞书 Webhook URL</span>
+                    <input name="feishuWebhookUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx">
+                  </label>
+                  <label>
+                    <span>飞书 Secret</span>
+                    <input name="feishuSecret" placeholder="optional">
+                  </label>
+                  <label>
+                    <span>飞书超时（毫秒）</span>
+                    <input name="feishuTimeoutMs" type="number" value="15000">
+                  </label>
                 </div>
               </section>
 
@@ -934,6 +1047,13 @@
           <span class="listener-candle-tip">实时快照</span>
         </div>
         <pre class="listener-candle-body">等待数据中...</pre>
+      </div>
+      <div class="listener-candle">
+        <div class="listener-candle-head">
+          <p class="listener-candle-title">最近一次信号</p>
+          <span class="listener-candle-tip">策略广播</span>
+        </div>
+        <pre class="listener-signal-body">未启用信号广播</pre>
       </div>
       <p class="listener-error"></p>
     </article>

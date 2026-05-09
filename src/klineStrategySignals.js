@@ -248,6 +248,22 @@ function buildStrategySignalOutputPath({
   );
 }
 
+function buildRealtimeStrategySignalOutputPath({
+  outputDir,
+  symbol,
+  timeframe,
+  strategyName,
+}) {
+  const safeStrategyName = sanitizeFileSegment(strategyName || 'strategy');
+  const safeSymbol = sanitizeFileSegment(symbol);
+  const safeTimeframe = sanitizeFileSegment(timeframe);
+
+  return path.join(
+    outputDir,
+    `${safeStrategyName}_${safeSymbol}_${safeTimeframe}_realtime_signals.csv`,
+  );
+}
+
 function writeStrategySignalCsv({
   periods,
   outputPath,
@@ -268,6 +284,48 @@ function writeStrategySignalCsv({
     periods: normalizedPeriods,
     outputPath,
   };
+}
+
+function appendStrategySignalCsv({
+  period,
+  outputPath,
+  strategy,
+  context,
+}) {
+  if (!period) {
+    throw new Error('period is required');
+  }
+
+  if (!outputPath) {
+    throw new Error('outputPath is required');
+  }
+
+  if (!strategy || !Array.isArray(strategy.columns)) {
+    throw new Error('strategy with columns is required');
+  }
+
+  if (!context) {
+    throw new Error('context is required');
+  }
+
+  const csv = periodsToCsv([period], strategy.columns, context).trimEnd();
+  const lines = csv.split('\n');
+  const header = lines[0];
+  const row = lines.slice(1).join('\n');
+
+  if (!row) {
+    throw new Error('signal CSV row is empty');
+  }
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
+    fs.writeFileSync(outputPath, `${header}\n${row}\n`, 'utf8');
+  } else {
+    fs.appendFileSync(outputPath, `${row}\n`, 'utf8');
+  }
+
+  return outputPath;
 }
 
 function buildDemoBollingerAdxSignalColumns() {
@@ -428,10 +486,12 @@ module.exports = {
   buildDemoBollingerAdxSignalColumns,
   buildDemoBollingerAdxSignalContext,
   buildDemoBollingerAdxSignalOutputPath,
+  buildRealtimeStrategySignalOutputPath,
   buildStrategySignalContext,
   buildStrategySignalOutputPath,
   createDemoBollingerAdxStrategy,
   createStrategySignalDefinition,
   normalizeDemoBollingerAdxOptions,
+  appendStrategySignalCsv,
   writeStrategySignalCsv,
 };

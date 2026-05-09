@@ -11,6 +11,7 @@ const {
   exportHistoricalKlines,
   normalizeHistoricalOptions,
   normalizeRealtimeOptions,
+  sanitizeRealtimeOptionsForState,
   startRealtimeListener,
 } = require('./klineService');
 const { loadSymbolConfig } = require('./marketSymbolCache');
@@ -221,6 +222,7 @@ function createPendingListenerState(listenerId, options = {}) {
     server: options.server || 'auto',
     proxy: options.proxy || '',
     outputPath: '',
+    signalOutputPath: '',
     connected: false,
     symbolLoaded: false,
     initialized: false,
@@ -230,8 +232,17 @@ function createPendingListenerState(listenerId, options = {}) {
     error: null,
     periodCount: 0,
     latestPeriod: null,
+    latestSignal: null,
+    lastTriggeredSignal: null,
+    signalBroadcastEnabled: Boolean(options.enableSignalBroadcast),
+    signalOutputMode: options.signalOutputMode || 'none',
+    signalTargets: options.signalOutputTargets || {
+      csv: false,
+      telegram: false,
+      feishu: false,
+    },
     symbolInfo: null,
-    options,
+    options: sanitizeRealtimeOptionsForState(options),
     lastEventAt: now,
   };
 }
